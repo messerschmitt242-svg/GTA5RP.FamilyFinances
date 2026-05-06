@@ -50,7 +50,7 @@ async def on_ready():
 @app_commands.describe(amount="Сумма долга")
 async def loan(interaction: discord.Interaction, amount: int):
 
-    request_channel = await bot.fetch_channel(CHANNEL_REQUEST)
+    request_channel = await bot.fetch_channel(CHANNEL_REPORT)
 
     embed = discord.Embed(
         title="💸 НОВАЯ ЗАЯВКА НА ДОЛГ",
