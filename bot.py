@@ -3,15 +3,12 @@ from discord.ext import commands
 from discord import app_commands
 from datetime import datetime
 import os
-import asyncio
 
 # ===== CONFIG =====
 TOKEN = os.getenv("TOKEN")
 
-CHANNEL_ID_REQUEST = 1501528770853605437
-CHANNEL_ID_REPORT = 1501351092125040710
-
-GUILD_ID = 1345261255300218992
+CHANNEL_ID_REQUEST = 1501528770853605437  # где пишут команду
+CHANNEL_ID_REPORT = 1501351092125040710   # куда отправляется отчет
 
 if not TOKEN:
     raise RuntimeError("TOKEN не найден!")
@@ -19,48 +16,51 @@ if not TOKEN:
 intents = discord.Intents.default()
 bot = commands.Bot(command_prefix="!", intents=intents)
 
-GUILD = discord.Object(id=GUILD_ID)
-
 # ===== READY =====
 @bot.event
 async def on_ready():
     print(f"✅ Logged in as {bot.user}")
 
-    # 🔥 безопасный sync (главный фикс твоей проблемы)
+    # 🔥 global sync (самый стабильный вариант)
     try:
-        synced = await bot.tree.sync(guild=GUILD)
-        print(f"✅ Guild sync OK: {len(synced)} commands")
+        synced = await bot.tree.sync()
+        print(f"✅ Global sync OK: {len(synced)} commands")
     except Exception as e:
-        print("❌ Guild sync error:", e)
-
-        # fallback (очень важно)
-        try:
-            synced_global = await bot.tree.sync()
-            print(f"⚠️ Global sync OK: {len(synced_global)} commands")
-        except Exception as e2:
-            print("❌ Global sync failed:", e2)
+        print("SYNC ERROR:", e)
 
 # ===== COMMAND =====
 @bot.tree.command(
     name="pay_debt",
-    description="Отправить отчет о погашении долга",
-    guild=GUILD
+    description="Отправить отчет о погашении долга"
 )
 @app_commands.describe(
     amount="Сумма выплаты",
     screenshot="Скриншот"
 )
-async def pay_debt(interaction: discord.Interaction, amount: int, screenshot: discord.Attachment):
+async def pay_debt(
+    interaction: discord.Interaction,
+    amount: int,
+    screenshot: discord.Attachment
+):
 
     await interaction.response.defer(ephemeral=True)
 
     try:
-        channel = bot.get_channel(CHANNEL_ID_REPORT)
+        # ===== проверка канала (request channel) =====
+        if interaction.channel_id != CHANNEL_ID_REQUEST:
+            await interaction.followup.send(
+                "❌ Эту команду можно использовать только в нужном канале",
+                ephemeral=True
+            )
+            return
 
-        # fallback если get_channel вернул None
-        if channel is None:
-            channel = await bot.fetch_channel(CHANNEL_ID_REPORT)
+        # ===== report channel =====
+        report_channel = bot.get_channel(CHANNEL_ID_REPORT)
 
+        if report_channel is None:
+            report_channel = await bot.fetch_channel(CHANNEL_ID_REPORT)
+
+        # ===== embed =====
         embed = discord.Embed(
             title="📥 ОТЧЕТ О ПОГАШЕНИИ ДОЛГА",
             color=discord.Color.orange()
@@ -73,12 +73,14 @@ async def pay_debt(interaction: discord.Interaction, amount: int, screenshot: di
 
         embed.set_image(url=screenshot.url)
 
-        await channel.send(embed=embed)
+        # ===== отправка =====
+        await report_channel.send(embed=embed)
 
+        # ===== ответ пользователю =====
         await interaction.followup.send("✅ Отчет отправлен", ephemeral=True)
 
     except Exception as e:
-        print("❌ COMMAND ERROR:", e)
+        print("❌ ERROR:", e)
 
         await interaction.followup.send(
             f"❌ Ошибка: `{e}`",
