@@ -5,8 +5,10 @@ from datetime import datetime
 import os
 import sqlite3
 
-# ===== CONFIG =====
+# ================= CONFIG =================
 TOKEN = os.getenv("TOKEN")
+
+GUILD_ID = 123456789012345678  # ⬅️ ВСТАВЬ ID СВОЕГО СЕРВЕРА
 
 CHANNEL_ID_REQUEST = 1501528770853605437
 CHANNEL_ID_REPORT = 1501351092125040710
@@ -16,10 +18,13 @@ CHANNEL_ID_LOANS = 1501385708366205028
 if not TOKEN:
     raise RuntimeError("TOKEN не найден!")
 
+guild = discord.Object(id=GUILD_ID)
+
+# ================= BOT =================
 intents = discord.Intents.default()
 bot = commands.Bot(command_prefix="!", intents=intents)
 
-# ===== DB =====
+# ================= DB =================
 conn = sqlite3.connect("debt.db")
 cursor = conn.cursor()
 
@@ -33,11 +38,11 @@ CREATE TABLE IF NOT EXISTS debts (
 """)
 conn.commit()
 
-# ===== MEMORY =====
-pending_payments = {}
+# ================= MEMORY =================
 pending_loans = {}
+pending_payments = {}
 
-# ===== HELPERS =====
+# ================= DB FUNCTION =================
 def add_loan(user_id: int, username: str, amount: int):
     cursor.execute("SELECT * FROM debts WHERE user_id = ?", (user_id,))
     row = cursor.fetchone()
@@ -55,7 +60,7 @@ def add_loan(user_id: int, username: str, amount: int):
 
     conn.commit()
 
-# ===== VIEW =====
+# ================= BUTTONS =================
 class LoanView(discord.ui.View):
     def __init__(self, message_id: int):
         super().__init__(timeout=None)
@@ -99,17 +104,22 @@ class LoanView(discord.ui.View):
         await interaction.message.delete()
         await interaction.response.send_message("❌ Отклонено", ephemeral=True)
 
-# ===== READY =====
+# ================= READY =================
 @bot.event
 async def on_ready():
-    await bot.tree.sync()
+    try:
+        synced = await bot.tree.sync(guild=guild)
+        print(f"✅ Synced commands: {len(synced)}")
+    except Exception as e:
+        print("SYNC ERROR:", e)
+
     print(f"✅ Logged in as {bot.user}")
 
-# =========================================================
-# ===================== PAY DEBT ==========================
-# =========================================================
+# =====================================================
+# =============== /PAY_DEBT ===========================
+# =====================================================
 
-@bot.tree.command(name="pay_debt", description="Отправить отчет о выплате")
+@bot.tree.command(name="pay_debt", description="Отправить отчет", guild=guild)
 async def pay_debt(interaction: discord.Interaction, amount: int, screenshot: discord.Attachment):
 
     await interaction.response.defer(ephemeral=True)
@@ -127,24 +137,24 @@ async def pay_debt(interaction: discord.Interaction, amount: int, screenshot: di
 
     embed.set_image(url=screenshot.url)
 
-    message = await channel.send(embed=embed)
+    msg = await channel.send(embed=embed)
 
-    pending_payments[message.id] = {
+    pending_payments[msg.id] = {
         "user_id": interaction.user.id,
         "username": interaction.user.display_name,
         "amount": amount,
         "date": datetime.now().strftime("%B %d, %Y")
     }
 
-    await message.edit(view=LoanView(message.id))
+    await msg.edit(view=LoanView(msg.id))
 
     await interaction.followup.send("✅ Отправлено", ephemeral=True)
 
-# =========================================================
-# ===================== LOAN SYSTEM ========================
-# =========================================================
+# =====================================================
+# ================= /LOAN =============================
+# =====================================================
 
-@bot.tree.command(name="loan", description="Запросить долг")
+@bot.tree.command(name="loan", description="Запросить долг", guild=guild)
 async def loan(interaction: discord.Interaction, amount: int):
 
     await interaction.response.defer(ephemeral=True)
@@ -160,18 +170,18 @@ async def loan(interaction: discord.Interaction, amount: int):
     embed.add_field(name="💰 Сумма", value=f"{amount:,}", inline=False)
     embed.add_field(name="📅 Дата", value=datetime.now().strftime("%d.%m.%Y"), inline=False)
 
-    message = await channel.send(embed=embed)
+    msg = await channel.send(embed=embed)
 
-    pending_loans[message.id] = {
+    pending_loans[msg.id] = {
         "user_id": interaction.user.id,
         "username": interaction.user.display_name,
         "amount": amount,
         "date": datetime.now().strftime("%B %d, %Y")
     }
 
-    await message.edit(view=LoanView(message.id))
+    await msg.edit(view=LoanView(msg.id))
 
     await interaction.followup.send("✅ Заявка отправлена", ephemeral=True)
 
-# ===== RUN =====
+# ================= RUN =================
 bot.run(TOKEN)
