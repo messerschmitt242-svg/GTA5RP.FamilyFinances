@@ -10,7 +10,7 @@ TOKEN = os.getenv("TOKEN")
 CHANNEL_ID_REQUEST = 1501528770853605437  # куда пишут команду (и откуда удаляем)
 CHANNEL_ID_REPORT = 1501351092125040710   # куда отправляем красивый отчёт
 
-GUILD_ID = 123456789012345678  # <-- ВСТАВЬ ID СВОЕГО СЕРВЕРА
+GUILD_ID = 1345261255300218992  # <-- ВСТАВЬ ID СВОЕГО СЕРВЕРА
 
 if not TOKEN:
     raise RuntimeError("TOKEN не найден!")
