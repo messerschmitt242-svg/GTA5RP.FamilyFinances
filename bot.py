@@ -4,30 +4,32 @@ from discord import app_commands
 from datetime import datetime
 import os
 
-# ====== CONFIG ======
+# ===== CONFIG =====
 TOKEN = os.getenv("TOKEN")
 
-CHANNEL_ID_MAIN = 1501528770853605437   # основной канал (отчет)
-CHANNEL_ID_LOG = 1501351092125040710    # второй канал (лог/копия)
+CHANNEL_ID_REQUEST = 1501528770853605437  # куда пишут команду (и откуда удаляем)
+CHANNEL_ID_REPORT = 1501351092125040710   # куда отправляем красивый отчёт
 
-GUILD_ID = 1345261255300218992  # <-- ВСТАВЬ ID СВОЕГО СЕРВЕРА
+GUILD_ID = 123456789012345678  # <-- ВСТАВЬ ID СВОЕГО СЕРВЕРА
 
 if not TOKEN:
-    raise RuntimeError("TOKEN не найден в переменных окружения!")
+    raise RuntimeError("TOKEN не найден!")
 
-# ====== BOT SETUP ======
+# ===== BOT =====
 intents = discord.Intents.default()
+intents.message_content = True  # на будущее (не обязательно для slash, но полезно)
+
 bot = commands.Bot(command_prefix="!", intents=intents)
 
 GUILD = discord.Object(id=GUILD_ID)
 
-# ====== SYNC COMMANDS (мгновенно) ======
+# ===== READY =====
 @bot.event
 async def on_ready():
     await bot.tree.sync(guild=GUILD)
     print(f"Запущен как {bot.user}")
 
-# ====== COMMAND ======
+# ===== COMMAND =====
 @bot.tree.command(
     name="pay_debt",
     description="Отправить отчет о погашении долга",
@@ -43,14 +45,16 @@ async def pay_debt(
     screenshot: discord.Attachment
 ):
 
-    # 💡 важно: чтобы не было "program not responding"
+    # 💡 убираем "не отвечает"
     await interaction.response.defer(ephemeral=True)
 
-    # каналы
-    channel_main = await bot.fetch_channel(CHANNEL_ID_MAIN)
-    channel_log = await bot.fetch_channel(CHANNEL_ID_LOG)
+    # канал где была команда
+    request_channel = await bot.fetch_channel(CHANNEL_ID_REQUEST)
 
-    # embed
+    # канал куда отправляем отчёт
+    report_channel = await bot.fetch_channel(CHANNEL_ID_REPORT)
+
+    # ===== EMBED =====
     embed = discord.Embed(
         title="📥 ОТЧЕТ О ПОГАШЕНИИ ДОЛГА",
         color=discord.Color.orange()
@@ -63,16 +67,18 @@ async def pay_debt(
 
     embed.set_image(url=screenshot.url)
 
-    # 📌 1 — основной канал
-    await channel_main.send(embed=embed)
+    # ===== 1. отправляем в отчёт канал =====
+    await report_channel.send(embed=embed)
 
-    # 📌 2 — лог канал (копия)
-    await channel_log.send(
-        f"📌 Новый отчёт от {interaction.user.mention} | сумма: {amount:,} ₽"
-    )
+    # ===== 2. удаляем сообщение команды =====
+    try:
+        # это удалит сам slash interaction message (если возможно)
+        await interaction.delete_original_response()
+    except:
+        pass
 
-    # ответ пользователю
-    await interaction.followup.send("✅ Отчет отправлен!", ephemeral=True)
+    # ===== 3. подтверждение пользователю (в ЛС-стиле ephemeral) =====
+    await interaction.followup.send("✅ Запрос обработан и отправлен", ephemeral=True)
 
-# ====== RUN ======
+# ===== RUN =====
 bot.run(TOKEN)
