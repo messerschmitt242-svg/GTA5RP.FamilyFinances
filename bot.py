@@ -3,6 +3,7 @@ from discord.ext import commands
 from discord import app_commands
 from datetime import datetime
 import os
+import sqlite3
 
 # ===== CONFIG =====
 TOKEN = os.getenv("TOKEN")
@@ -17,10 +18,42 @@ if not TOKEN:
 intents = discord.Intents.default()
 bot = commands.Bot(command_prefix="!", intents=intents)
 
-# ===== GLOBAL STORAGE (для передачи данных кнопкам) =====
+# ===== DB SETUP =====
+conn = sqlite3.connect("debt.db")
+cursor = conn.cursor()
+
+cursor.execute("""
+CREATE TABLE IF NOT EXISTS debts (
+    user_id INTEGER PRIMARY KEY,
+    username TEXT,
+    debt INTEGER DEFAULT 0,
+    paid INTEGER DEFAULT 0
+)
+""")
+conn.commit()
+
+# ===== MEMORY =====
 pending_data = {}
 
-# ===== VIEW (кнопки) =====
+# ===== HELPERS =====
+def add_payment(user_id: int, username: str, amount: int):
+    cursor.execute("SELECT * FROM debts WHERE user_id = ?", (user_id,))
+    row = cursor.fetchone()
+
+    if row is None:
+        cursor.execute(
+            "INSERT INTO debts (user_id, username, debt, paid) VALUES (?, ?, ?, ?)",
+            (user_id, username, 0, amount)
+        )
+    else:
+        cursor.execute(
+            "UPDATE debts SET paid = paid + ? WHERE user_id = ?",
+            (amount, user_id)
+        )
+
+    conn.commit()
+
+# ===== VIEW =====
 class DebtView(discord.ui.View):
     def __init__(self, message_id: int):
         super().__init__(timeout=None)
@@ -31,10 +64,13 @@ class DebtView(discord.ui.View):
 
         data = pending_data.get(self.message_id)
         if not data:
-            await interaction.response.send_message("❌ Данные не найдены", ephemeral=True)
+            await interaction.response.send_message("❌ Нет данных", ephemeral=True)
             return
 
         channel = await bot.fetch_channel(CHANNEL_ID_APPROVED)
+
+        # ===== DB UPDATE =====
+        add_payment(data["user_id"], data["username"], data["amount"])
 
         embed = discord.Embed(
             title="〖💰〗ЧАСТИЧНОЕ ПОГАШЕНИЕ",
@@ -43,7 +79,7 @@ class DebtView(discord.ui.View):
 
         embed.description = (
             "────────────────\n"
-            f"👤 Заемщик: {data['user']}\n"
+            f"👤 Заемщик: {data['username']}\n"
             f"💸 Внесено: {data['amount']:,}\n"
             f"📉 Остаток долга: \n"
             f"📅 Дата платежа: {data['date']}\n"
@@ -65,13 +101,8 @@ class DebtView(discord.ui.View):
 # ===== READY =====
 @bot.event
 async def on_ready():
+    await bot.tree.sync()
     print(f"✅ Logged in as {bot.user}")
-
-    try:
-        synced = await bot.tree.sync()
-        print(f"✅ Sync OK: {len(synced)} commands")
-    except Exception as e:
-        print("SYNC ERROR:", e)
 
 # ===== COMMAND =====
 @bot.tree.command(name="pay_debt", description="Отправить отчет")
@@ -94,24 +125,22 @@ async def pay_debt(interaction: discord.Interaction, amount: int, screenshot: di
 
         embed.set_image(url=screenshot.url)
 
-        # отправляем сообщение и получаем message
         message = await report_channel.send(embed=embed)
 
-        # сохраняем данные для кнопок
+        # ===== SAVE TO MEMORY =====
         pending_data[message.id] = {
-            "user": interaction.user.mention,
+            "user_id": interaction.user.id,
+            "username": interaction.user.display_name,
             "amount": amount,
             "date": datetime.now().strftime("%B %d, %Y")
         }
 
-        # добавляем кнопки
         await message.edit(view=DebtView(message.id))
 
-        await interaction.followup.send("✅ Отправлено на проверку", ephemeral=True)
+        await interaction.followup.send("✅ Отправлено", ephemeral=True)
 
     except Exception as e:
         print("ERROR:", e)
-
         await interaction.followup.send(f"❌ Ошибка: `{e}`", ephemeral=True)
 
 # ===== RUN =====
