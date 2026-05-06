@@ -250,7 +250,7 @@ class PayDebtView(discord.ui.View):
         await interaction.message.delete()
 
 # ================= COMMANDS =================
-@bot.tree.command(name="deposit_to_family", guild=guild)
+@bot.tree.command(name="deposit_to_family", description="Добровольный взнос на счет семьи", guild=guild)
 async def deposit(interaction: discord.Interaction, amount: int, screenshot: discord.Attachment):
 
     channel = await bot.fetch_channel(CHANNEL_REPORT)
@@ -263,7 +263,7 @@ async def deposit(interaction: discord.Interaction, amount: int, screenshot: dis
     await channel.send(embed=embed, view=DepositView(interaction.user.id, amount))
     await interaction.response.send_message("OK", ephemeral=True)
 
-@bot.tree.command(name="loan", guild=guild)
+@bot.tree.command(name="loan", description="Запросить выдачу долга у семьи", guild=guild)
 async def loan(interaction: discord.Interaction, amount: int):
 
     channel = await bot.fetch_channel(CHANNEL_REPORT)
@@ -275,7 +275,7 @@ async def loan(interaction: discord.Interaction, amount: int):
     await channel.send(embed=embed, view=LoanView(interaction.user.id, amount))
     await interaction.response.send_message("OK", ephemeral=True)
 
-@bot.tree.command(name="pay_debt", guild=guild)
+@bot.tree.command(name="pay_debt", description="Погасить частично/полностью долг", guild=guild)
 async def pay_debt(interaction: discord.Interaction, amount: int, screenshot: discord.Attachment):
 
     channel = await bot.fetch_channel(CHANNEL_REPORT)
@@ -288,7 +288,7 @@ async def pay_debt(interaction: discord.Interaction, amount: int, screenshot: di
     await channel.send(embed=embed, view=PayDebtView(interaction.user.id, amount))
     await interaction.response.send_message("OK", ephemeral=True)
 
-@bot.tree.command(name="all_loans", guild=guild)
+@bot.tree.command(name="all_loans", description="Получить список должников", guild=guild)
 async def all_loans(interaction: discord.Interaction):
 
     data = get_all_debts()
@@ -304,7 +304,7 @@ async def all_loans(interaction: discord.Interaction):
 
     await interaction.response.send_message(text, ephemeral=True)
 
-@bot.tree.command(name="edit_family_bank", guild=guild)
+@bot.tree.command(name="edit_family_bank", description="Изменить баланс фонда семьи", guild=guild)
 async def edit_family_bank(interaction: discord.Interaction, amount: int):
 
     set_balance(amount)
@@ -312,7 +312,7 @@ async def edit_family_bank(interaction: discord.Interaction, amount: int):
 
     await interaction.response.send_message("OK", ephemeral=True)
 
-@bot.tree.command(name="edit_sponsor", guild=guild)
+@bot.tree.command(name="edit_sponsor", description="НЕ ИСПОЛЬЗОВАТЬ!!!", guild=guild)
 async def edit_sponsor_cmd(interaction: discord.Interaction, user: discord.Member, amount: int):
 
     set_sponsor(user.id, amount)
