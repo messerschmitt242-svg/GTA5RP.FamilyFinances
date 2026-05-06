@@ -67,7 +67,7 @@ async def pay_debt(
         )
 
         embed.add_field(name="👤 Отправитель", value=interaction.user.mention, inline=False)
-        embed.add_field(name="💰 Сумма", value=f"{amount:,} ₽", inline=False)
+        embed.add_field(name="💰 Сумма", value=f"{amount:,} $", inline=False)
         embed.add_field(name="📅 Дата", value=datetime.now().strftime("%d.%m.%Y"), inline=False)
         embed.add_field(name="⚠️ Статус", value="Ожидает проверки", inline=False)
 
