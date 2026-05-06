@@ -7,8 +7,8 @@ import os
 # ===== CONFIG =====
 TOKEN = os.getenv("TOKEN")
 
-CHANNEL_ID_REQUEST = 1501528770853605437  # куда пишут команду (и откуда удаляем)
-CHANNEL_ID_REPORT = 1501351092125040710   # куда отправляем красивый отчёт
+CHANNEL_ID_REQUEST = 1501528770853605437  # где пишут команду
+CHANNEL_ID_REPORT = 1501351092125040710   # куда улетает отчёт
 
 GUILD_ID = 1345261255300218992  # <-- ВСТАВЬ ID СВОЕГО СЕРВЕРА
 
@@ -17,8 +17,6 @@ if not TOKEN:
 
 # ===== BOT =====
 intents = discord.Intents.default()
-intents.message_content = True  # на будущее (не обязательно для slash, но полезно)
-
 bot = commands.Bot(command_prefix="!", intents=intents)
 
 GUILD = discord.Object(id=GUILD_ID)
@@ -45,13 +43,11 @@ async def pay_debt(
     screenshot: discord.Attachment
 ):
 
-    # 💡 убираем "не отвечает"
+    # 💡 ОБЯЗАТЕЛЬНО чтобы не было "program not responding"
     await interaction.response.defer(ephemeral=True)
 
-    # канал где была команда
+    # каналы
     request_channel = await bot.fetch_channel(CHANNEL_ID_REQUEST)
-
-    # канал куда отправляем отчёт
     report_channel = await bot.fetch_channel(CHANNEL_ID_REPORT)
 
     # ===== EMBED =====
@@ -63,22 +59,21 @@ async def pay_debt(
     embed.add_field(name="👤 Отправитель", value=interaction.user.mention, inline=False)
     embed.add_field(name="💰 Сумма выплаты", value=f"{amount:,} ₽", inline=False)
     embed.add_field(name="📅 Дата", value=datetime.now().strftime("%d.%m.%Y"), inline=False)
-    embed.add_field(name="⚠️ Статус", value="Ожидает проверки администрацией", inline=False)
+    embed.add_field(name="⚠️ Статус", value="Ожидает проверки", inline=False)
 
     embed.set_image(url=screenshot.url)
 
-    # ===== 1. отправляем в отчёт канал =====
+    # ===== 1. отправка в лог канал =====
     await report_channel.send(embed=embed)
 
-    # ===== 2. удаляем сообщение команды =====
+    # ===== 2. удаление сообщения команды =====
     try:
-        # это удалит сам slash interaction message (если возможно)
         await interaction.delete_original_response()
     except:
         pass
 
-    # ===== 3. подтверждение пользователю (в ЛС-стиле ephemeral) =====
-    await interaction.followup.send("✅ Запрос обработан и отправлен", ephemeral=True)
+    # ===== 3. ответ пользователю =====
+    await interaction.followup.send("✅ Отчет отправлен!", ephemeral=True)
 
 # ===== RUN =====
 bot.run(TOKEN)
