@@ -27,6 +27,7 @@ intents = discord.Intents.default()
 intents.message_content = True
 intents.messages = True
 intents.guilds = True
+intents.members = True
 
 bot = commands.Bot(command_prefix="!", intents=intents)
 guild = discord.Object(id=GUILD_ID)
@@ -309,15 +310,12 @@ async def resolve_member(guild, text):
     # display name / username
     for member in guild.members:
 
-        if (
-            member.display_name.lower()
-            == text.lower()
-        ):
+        if text.lower() in member.display_name.lower():
             return member
 
-        if member.name.lower() == text.lower():
+        if text.lower() in member.name.lower():
             return member
-
+        
     return None
 
 class MemberSelect(discord.ui.UserSelect):
