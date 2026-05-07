@@ -385,7 +385,7 @@ async def on_message(message: discord.Message):
 
     if uid in active_uploads:
 
-    del active_uploads[uid]
+        del active_uploads[uid]
 
 # ================= APPROVE VIEWS =================
 class DepositView(discord.ui.View):
