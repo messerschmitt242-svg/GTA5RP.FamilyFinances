@@ -350,6 +350,7 @@ async def on_message(message: discord.Message):
         image_url = message.content
 
     if not image_url:
+        await message.channel.send( f"{message.author.mention} ❌ Отправь картинку или файл" )
         return
 
     try:
@@ -622,43 +623,32 @@ class LoanModal(discord.ui.Modal, title="Взять в долг"):
                 ephemeral=True
             )
 
-        uid = interaction.user.id
+        channel = await bot.fetch_channel(
+            CHANNEL_REPORT
+        )
 
-        async def callback(message, image_url):
+        embed = discord.Embed(
+            title="💸 ЗАЯВКА НА ДОЛГ",
+            color=discord.Color.blue()
+        )
 
-            channel = await bot.fetch_channel(
-                CHANNEL_REPORT
-            )
+        embed.add_field(
+            name="👤",
+            value=interaction.user.mention
+        )
 
-            embed = discord.Embed(
-                title="💸 ЗАЯВКА НА ДОЛГ",
-                color=discord.Color.blue()
-            )
+        embed.add_field(
+            name="💰",
+            value=f"{amount:,}"
+        )
 
-            embed.add_field(
-                name="👤",
-                value=interaction.user.mention
-            )
-
-            embed.add_field(
-                name="💰",
-                value=f"{amount:,}"
-            )
-
-            embed.set_image(url=image_url)
-
-            await channel.send(
-                embed=embed,
-                view=LoanView(uid, amount)
-            )
-
-        active_uploads[uid] = {
-            "callback": callback,
-            "channel_id": interaction.channel.id
-        }
+        await channel.send(
+            embed=embed,
+            view=LoanView(interaction.user.id, amount)
+        )
 
         await interaction.response.send_message(
-            "📎 Отправь скриншот",
+            "✅ Заявка отправлена",
             ephemeral=True
         )
 
