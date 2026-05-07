@@ -359,6 +359,23 @@ class DepositView(discord.ui.View):
         await update_bank()
         await i.message.delete()
 
+    @discord.ui.button(label="❌", style=discord.ButtonStyle.red)
+    async def reject(self, i, b):
+
+        if not is_head(i.user):
+            return await i.response.send_message("❌ Нет доступа", ephemeral=True)
+
+        add_log("ОТКЛОНЁН ПЛАТЁЖ", self.uid, self.amount)
+
+        await admin_log(
+            "ОТКЛОНЁН ПЛАТЁЖ",
+            await bot.fetch_user(self.uid),
+            self.amount,
+            i.user
+            )
+        
+        await i.message.delete()
+
 class LoanView(discord.ui.View):
     def __init__(self, uid, amount):
         super().__init__()
@@ -374,7 +391,24 @@ class LoanView(discord.ui.View):
         
         await update_bank()
         await i.message.delete()
+        
+    @discord.ui.button(label="❌", style=discord.ButtonStyle.red)
+    async def reject(self, i, b):
 
+        if not is_head(i.user):
+            return await i.response.send_message("❌ Нет доступа", ephemeral=True)
+
+        add_log("ОТКЛОНЁН КРЕДИТ", self.uid, self.amount)
+        
+        await admin_log(
+            "ОТКЛОНЁН КРЕДИТ",
+            await bot.fetch_user(self.uid),
+            self.amount,
+            i.user
+        )
+
+        await i.message.delete()
+    
 class PayDebtView(discord.ui.View):
     def __init__(self, uid, amount):
         super().__init__()
@@ -394,6 +428,23 @@ class PayDebtView(discord.ui.View):
         await update_bank()
         await i.message.delete()
 
+    @discord.ui.button(label="❌", style=discord.ButtonStyle.red)
+    async def reject(self, i, b):
+
+        if not is_head(i.user):
+            return await i.response.send_message("❌ Нет доступа", ephemeral=True)
+
+        add_log("ОТКЛОНЁН ПЛАТЁЖ", self.uid, self.amount)
+        
+        await admin_log(
+            "ОТКЛОНЁН ПЛАТЁЖ",
+            await bot.fetch_user(self.uid),
+            self.amount,
+            i.user
+        )
+
+        await i.message.delete()
+    
 # ================= MODALS =================
 class DepositModal(discord.ui.Modal, title="Deposit"):
     amount = discord.ui.TextInput(label="Amount")
