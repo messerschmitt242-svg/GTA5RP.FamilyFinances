@@ -468,22 +468,41 @@ class FamilyMenu(discord.ui.View):
 
     @discord.ui.button(label="💰 Взнос", style=discord.ButtonStyle.green, custom_id="dep")
     async def deposit(self, interaction: discord.Interaction, button: discord.ui.Button):
-
-        modal = AmountModal("deposit")
-        await interaction.response.send_modal(modal)
+        try:
+            await interaction.response.defer(ephemeral=True)
+            await interaction.followup.send(
+                "💰 Введи сумму:",
+                view=DepositFlowView(interaction.user.id),
+                ephemeral=True
+            )
+        except Exception as e:
+            print("BUTTON ERROR:", e)
 
     @discord.ui.button(label="💸 Долг", style=discord.ButtonStyle.blurple, custom_id="loan")
     async def loan(self, interaction: discord.Interaction, button: discord.ui.Button):
-
-        modal = AmountModal("loan")
-        await interaction.response.send_modal(modal)
+        try:
+            await interaction.response.defer(ephemeral=True)
+            await interaction.followup.send(
+                "💸 Введи сумму:",
+                view=LoanFlowView(interaction.user.id),
+                ephemeral=True
+            )
+        except Exception as e:
+            print("BUTTON ERROR:", e)
 
     @discord.ui.button(label="📥 Погасить", style=discord.ButtonStyle.gray, custom_id="repay")
     async def repay(self, interaction: discord.Interaction, button: discord.ui.Button):
+        try:
+            debt = get_debt(interaction.user.id)
 
-        debt = get_debt(interaction.user.id)
-        modal = AmountModal("repay", debt)
-        await interaction.response.send_modal(modal)
+            await interaction.response.defer(ephemeral=True)
+            await interaction.followup.send(
+                f"📊 Долг: {debt:,}\nВведите сумму:",
+                view=RepayFlowView(interaction.user.id, debt),
+                ephemeral=True
+            )
+        except Exception as e:
+            print("BUTTON ERROR:", e)
 
     @discord.ui.button(label="📊 Долги", style=discord.ButtonStyle.secondary)
     async def list(self, interaction: discord.Interaction, button: discord.ui.Button):
