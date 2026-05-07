@@ -522,10 +522,6 @@ class FamilyMenu(discord.ui.View):
 # ================= MODALS ===================
 class DepositModal(discord.ui.Modal, title="Добровольный взнос"):
     amount = discord.ui.TextInput(label="Сумма", required=True)
-    screenshot = discord.ui.TextInput(
-        label="Скриншот (URL или напиши 'файл' ниже)",
-        required=True
-    )
 
     async def on_submit(self, interaction: discord.Interaction):
 
@@ -536,7 +532,7 @@ class DepositModal(discord.ui.Modal, title="Добровольный взнос"
             return
 
         await interaction.response.send_message(
-            "📎 Отправь картинку следующим сообщением (файл или вставь Ctrl+V)",
+            "📎 Отправь картинку следующим сообщением (Ctrl+V или файл)",
             ephemeral=True
         )
 
@@ -559,8 +555,14 @@ class DepositModal(discord.ui.Modal, title="Добровольный взнос"
 
             await channel.send(embed=embed, view=DepositView(interaction.user.id, amount))
 
+            # 🧹 УДАЛЕНИЕ СООБЩЕНИЯ С КАРТИНКОЙ
+            try:
+                await msg.delete()
+            except:
+                pass
+
         except:
-            await interaction.followup.send("⏳ Время вышло или нет файла", ephemeral=True)
+            await interaction.followup.send("⏳ Время вышло", ephemeral=True)
         
 class LoanModal(discord.ui.Modal, title="Взять в долг"):
     amount = discord.ui.TextInput(label="Сумма", required=True)
@@ -614,13 +616,10 @@ class PayDebtModal(discord.ui.Modal, title="Погашение долга"):
             await interaction.response.send_message("❌ Неверная сумма", ephemeral=True)
             return
 
-        # 💡 получаем долг
-        from_db = get_debt(interaction.user.id)
+        debt = get_debt(interaction.user.id)
 
         await interaction.response.send_message(
-            f"💡 Твой текущий долг: {from_db:,}\n"
-            f"💸 Ты указал: {amount:,}\n\n"
-            f"📎 Теперь отправь скриншот (файл или Ctrl+V)",
+            f"💡 Долг: {debt:,}\n📎 Отправь скриншот (Ctrl+V или файл)",
             ephemeral=True
         )
 
@@ -642,6 +641,12 @@ class PayDebtModal(discord.ui.Modal, title="Погашение долга"):
                 embed.set_image(url=attachment.url)
 
             await channel.send(embed=embed, view=PayDebtView(interaction.user.id, amount))
+
+            # 🧹 удаляем сообщение со скрином
+            try:
+                await msg.delete()
+            except:
+                pass
 
         except:
             await interaction.followup.send("⏳ Время вышло", ephemeral=True)
