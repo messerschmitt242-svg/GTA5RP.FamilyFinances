@@ -151,38 +151,47 @@ class BankUI(discord.ui.View):
     def __init__(self):
         super().__init__(timeout=None)
 
-    @discord.ui.button(label="💰 Deposit", style=discord.ButtonStyle.green)
+    @discord.ui.button(label="💰 Взнос", style=discord.ButtonStyle.green)
     async def dep(self, i, b):
         await i.response.send_modal(DepositModal())
 
-    @discord.ui.button(label="💸 Loan", style=discord.ButtonStyle.blurple)
+    @discord.ui.button(label="💸 Кредит", style=discord.ButtonStyle.blurple)
     async def loan(self, i, b):
         await i.response.send_modal(LoanModal())
 
-    @discord.ui.button(label="📥 Repay", style=discord.ButtonStyle.gray)
+    @discord.ui.button(label="📥 Погашение", style=discord.ButtonStyle.gray)
     async def repay(self, i, b):
         await i.response.send_modal(PayDebtModal())
 
-    @discord.ui.button(label="📊 Debts", style=discord.ButtonStyle.secondary)
+    @discord.ui.button(label="📊 Долги", style=discord.ButtonStyle.secondary)
     async def debts(self, i, b):
+
         data = get_all_debts()
-        desc = "\n".join([f"<@{u}> — ${a:,}" for u,a in data]) or "None"
+        desc = "\n".join([f"<@{u}> — 💸 ${a:,}" for u,a in data]) or "Нет долгов"
 
         await i.response.send_message(
-            embed=discord.Embed(title="📊 DEBTS", description=desc, color=BANK_COLOR),
+            embed=discord.Embed(
+                title="📊 АКТИВНЫЕ ДОЛГИ",
+                description=desc,
+                color=BANK_COLOR
+            ),
             ephemeral=True
         )
 
-    @discord.ui.button(label="🏆 Top", style=discord.ButtonStyle.success)
+    @discord.ui.button(label="🏆 Топ", style=discord.ButtonStyle.success)
     async def top(self, i, b):
+
         data = get_top_sponsors()
-        desc = "\n".join([f"{x+1}. <@{u}> — ${a:,}" for x,(u,a) in enumerate(data)]) or "None"
+        desc = "\n".join([f"{x+1}. <@{u}> — 💰 ${a:,}" for x,(u,a) in enumerate(data)]) or "Пусто"
 
         await i.response.send_message(
-            embed=discord.Embed(title="🏆 TOP", description=desc, color=BANK_COLOR),
+            embed=discord.Embed(
+                title="🏆 ТОП СПОНСОРОВ",
+                description=desc,
+                color=BANK_COLOR
+            ),
             ephemeral=True
         )
-
 # ================= DASHBOARD =================
 async def update_bank():
     global BANK_MESSAGE_ID
