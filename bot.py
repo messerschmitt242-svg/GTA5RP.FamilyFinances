@@ -8,6 +8,8 @@ import sqlite3
 # ================= CONFIG =================
 TOKEN = os.getenv("TOKEN")
 
+HEAD_ROLE_ID = 1345267230300049408
+
 GUILD_ID = 1345261255300218992
 
 CHANNEL_FAMILY_BALANCE = 1501339448250601472
@@ -51,6 +53,9 @@ cursor.execute("INSERT OR IGNORE INTO family_bank (id, balance) VALUES (1, 0)")
 conn.commit()
 
 # ================= DB =================
+def is_head(member: discord.Member):
+    return any(role.id == HEAD_ROLE_ID for role in member.roles)
+
 def get_balance():
     cursor.execute("SELECT balance FROM family_bank WHERE id=1")
     return cursor.fetchone()[0]
@@ -147,6 +152,25 @@ async def update_balance_message():
 
     balance_message = await channel.send(text)
     await balance_message.pin()
+    
+# ================= ADMIN LOG =================
+async def admin_log(text):
+
+    channel = await bot.fetch_channel(CHANNEL_REPORT)
+
+    embed = discord.Embed(
+        title="🛠️ ДЕЙСТВИЕ АДМИНИСТРАЦИИ",
+        color=discord.Color.dark_gray()
+    )
+    
+    embed.add_field(name="📌 Действие", value=action, inline=False)
+    embed.add_field(name="👤 Пользователь", value=user.mention, inline=False)
+    embed.add_field(name="💰 Сумма", value=f"{amount:,}", inline=False)
+    embed.add_field(name="🛡️ Администратор", value=admin.mention, inline=False)
+
+    embed.timestamp = datetime.now()
+
+    await channel.send(embed=embed)
 
 async def update_top_sponsors():
     global top_message
@@ -186,25 +210,67 @@ class DepositView(discord.ui.View):
         self.user_id = user_id
         self.amount = amount
 
-    @discord.ui.button(label="Одобрить", style=discord.ButtonStyle.green)
+    @discord.ui.button(label="✅ Одобрить", style=discord.ButtonStyle.green)
     async def approve(self, interaction: discord.Interaction, button: discord.ui.Button):
 
+        # проверка роли
+        if not is_head(interaction.user):
+            await interaction.response.send_message(
+                "❌ Только Head может подтверждать заявки",
+                ephemeral=True
+            )
+        return
+        
         add_balance(self.amount)
         add_sponsor(self.user_id, self.amount)
 
         user = await bot.fetch_user(self.user_id)
+        
         log_channel = await bot.fetch_channel(CHANNEL_DEPOSITS_LOG)
 
-        embed = discord.Embed(title="💰 ПОПОЛНЕНИЕ ФОНДА", color=discord.Color.green())
-        embed.add_field(name="👤 Кто", value=user.mention)
-        embed.add_field(name="💸 Сумма", value=f"{self.amount:,}")
+        embed = discord.Embed(
+            title="💰 ПОПОЛНЕНИЕ ФОНДА",
+            color=discord.Color.green()
+        )
+        
+        embed.add_field(name="👤 Кто внес", value=user.mention, inline=False)
+        embed.add_field(name="💸 Сумма", value=f"{self.amount:,}", inline=False)
+        embed.add_field(name="🛡️ Подтвердил", value=interaction.user.mention, inline=False)
 
         await log_channel.send(embed=embed)
+
+        await admin_log(
+            "Одобрено пополнение фонда",
+            user,
+            self.amount,
+            interaction.user
+        )
 
         await update_balance_message()
         await update_top_sponsors()
 
         await interaction.message.delete()
+
+        @discord.ui.button(label="❌ Отказать", style=discord.ButtonStyle.red)
+        async def reject(self, interaction: discord.Interaction, button: discord.ui.Button):
+
+            if not is_head(interaction.user):
+                await interaction.response.send_message(
+                    "❌ Только Head может отклонять заявки",
+                    ephemeral=True
+                )
+            return
+            
+            user = await bot.fetch_user(self.user_id)
+
+            await admin_log(
+                "Отклонено пополнение фонда",
+                user,
+                self.amount,
+                interaction.user
+            )
+            
+            await interaction.message.delete()
 
 class LoanView(discord.ui.View):
     def __init__(self, user_id, amount):
@@ -212,13 +278,22 @@ class LoanView(discord.ui.View):
         self.user_id = user_id
         self.amount = amount
 
-    @discord.ui.button(label="Одобрить", style=discord.ButtonStyle.green)
+    @discord.ui.button(label="✅ Одобрить", style=discord.ButtonStyle.green)
     async def approve(self, interaction: discord.Interaction, button: discord.ui.Button):
 
+        # проверка роли
+        if not is_head(interaction.user):
+            await interaction.response.send_message(
+                "❌ Только Head может подтверждать заявки",
+                ephemeral=True
+            )
+        return
+        
         subtract_balance(self.amount)
         add_debt(self.user_id, self.amount)
 
         total = get_debt(self.user_id)
+        
         user = await bot.fetch_user(self.user_id)
 
         channel = await bot.fetch_channel(CHANNEL_APPROVE)
@@ -231,8 +306,37 @@ class LoanView(discord.ui.View):
             f"Принял: {interaction.user.mention}"
         )
 
+        await admin_log(
+            "Одобрен новый долг",
+            user,
+            self.amount,
+            interaction.user
+        )
+
         await update_balance_message()
+        
         await interaction.message.delete()
+
+    @discord.ui.button(label="❌ Отказать", style=discord.ButtonStyle.red)
+    async def reject(self, interaction: discord.Interaction, button: discord.ui.Button):
+
+        if not is_head(interaction.user):
+            await interaction.response.send_message(
+                "❌ Только Head может отклонять заявки",
+                ephemeral=True
+            )
+        return
+
+        user = await bot.fetch_user(self.user_id)
+
+        await admin_log(
+            "Отклонен запрос долга",
+            user,
+            self.amount,
+            interaction.user
+        )
+
+    await interaction.message.delete()
 
 class PayDebtView(discord.ui.View):
     def __init__(self, user_id, amount):
@@ -240,13 +344,22 @@ class PayDebtView(discord.ui.View):
         self.user_id = user_id
         self.amount = amount
 
-    @discord.ui.button(label="Одобрить", style=discord.ButtonStyle.green)
+    @discord.ui.button(label="✅ Одобрить", style=discord.ButtonStyle.green)
     async def approve(self, interaction: discord.Interaction, button: discord.ui.Button):
+
+        # проверка роли
+        if not is_head(interaction.user):
+            await interaction.response.send_message(
+                "❌ Только Head может подтверждать заявки",
+                ephemeral=True
+            )
+        return
 
         reduce_debt(self.user_id, self.amount)
         add_balance(self.amount)
 
         total = get_debt(self.user_id)
+        
         user = await bot.fetch_user(self.user_id)
 
         channel = await bot.fetch_channel(CHANNEL_APPROVE)
@@ -259,7 +372,36 @@ class PayDebtView(discord.ui.View):
             f"Принял: {interaction.user.mention}"
         )
 
+        await admin_log(
+            "Одобрено погашение долга",
+            user,
+            self.amount,
+            interaction.user
+        )
+
         await update_balance_message()
+        
+        await interaction.message.delete()
+
+    @discord.ui.button(label="❌ Отказать", style=discord.ButtonStyle.red)
+    async def reject(self, interaction: discord.Interaction, button: discord.ui.Button):
+
+        if not is_head(interaction.user):
+            await interaction.response.send_message(
+                "❌ Только Head может отклонять заявки",
+                ephemeral=True
+            )
+        return
+
+        user = await bot.fetch_user(self.user_id)
+
+        await admin_log(
+            "Отклонено погашение долга",
+            user,
+            self.amount,
+            interaction.user
+        )
+
         await interaction.message.delete()
 
 # ================= COMMANDS =================
