@@ -5,6 +5,7 @@ from datetime import datetime
 import os
 import sqlite3
 
+
 # ================= CONFIG =================
 TOKEN = os.getenv("TOKEN")
 
