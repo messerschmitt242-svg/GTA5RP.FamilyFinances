@@ -154,15 +154,14 @@ async def update_balance_message():
     await balance_message.pin()
     
 # ================= ADMIN LOG =================
-async def admin_log(text):
-
+async def admin_log(action: str, user: discord.User, amount: int, admin: discord.Member):
     channel = await bot.fetch_channel(CHANNEL_REPORT)
 
     embed = discord.Embed(
         title="🛠️ ДЕЙСТВИЕ АДМИНИСТРАЦИИ",
         color=discord.Color.dark_gray()
     )
-    
+
     embed.add_field(name="📌 Действие", value=action, inline=False)
     embed.add_field(name="👤 Пользователь", value=user.mention, inline=False)
     embed.add_field(name="💰 Сумма", value=f"{amount:,}", inline=False)
@@ -209,17 +208,35 @@ class DepositView(discord.ui.View):
         super().__init__(timeout=None)
         self.user_id = user_id
         self.amount = amount
+        self.done = False
 
     def is_head(self, interaction: discord.Interaction):
         return any(role.id == HEAD_ROLE_ID for role in interaction.user.roles)
 
     @discord.ui.button(label="✅ Одобрить", style=discord.ButtonStyle.green)
     async def approve(self, interaction: discord.Interaction, button: discord.ui.Button):
-
-        if not self.is_head(interaction):
-            await interaction.response.send_message("❌ Только Head может одобрять заявки", ephemeral=True)
+        
+        # 🔒 защита от повторного нажатия
+        if self.done:
+            await interaction.response.send_message(
+                "⚠️ Эта заявка уже обработана",
+                ephemeral=True
+            )
             return
 
+        self.done = True  # блокируем повторные клики
+        
+        # 🔒 проверка роли
+        if not self.is_head(interaction):
+            await interaction.response.send_message(
+                "❌ Только Head может одобрять заявки",
+                ephemeral=True
+            )
+            return
+
+        await interaction.response.defer()
+
+        # 💰 логика пополнения
         add_balance(self.amount)
         add_sponsor(self.user_id, self.amount)
 
@@ -233,18 +250,45 @@ class DepositView(discord.ui.View):
 
         await log_channel.send(embed=embed)
 
+        # 🛠 админ лог (апрув)
+        await admin_log(
+            "Одобрено пополнение фонда",
+            user,
+            self.amount,
+            interaction.user
+        )
+
+        # 🔄 обновления
         await update_balance_message()
         await update_top_sponsors()
 
+        # 🧹 удаление заявки
         await interaction.message.delete()
 
     @discord.ui.button(label="❌ Отказать", style=discord.ButtonStyle.red)
     async def reject(self, interaction: discord.Interaction, button: discord.ui.Button):
 
+        # 🔒 проверка роли
         if not self.is_head(interaction):
-            await interaction.response.send_message("❌ Только Head может откланять заявки", ephemeral=True)
+            await interaction.response.send_message(
+                "❌ Только Head может откланять заявки",
+                ephemeral=True
+            )
             return
+            
+        await interaction.response.defer()
+        
+        user = await bot.fetch_user(self.user_id)
 
+        # 🛠 админ лог (отказ)
+        await admin_log(
+            "Отклонено пополнение фонда",
+            user,
+            self.amount,
+            interaction.user
+        )
+
+        # 🧹 удаление заявки
         await interaction.message.delete()
 
 
@@ -253,6 +297,7 @@ class LoanView(discord.ui.View):
         super().__init__(timeout=None)
         self.user_id = user_id
         self.amount = amount
+        self.done = False
 
     def is_head(self, interaction: discord.Interaction):
         return any(role.id == HEAD_ROLE_ID for role in interaction.user.roles)
@@ -260,10 +305,27 @@ class LoanView(discord.ui.View):
     @discord.ui.button(label="✅ Одобрить", style=discord.ButtonStyle.green)
     async def approve(self, interaction: discord.Interaction, button: discord.ui.Button):
 
-        if not self.is_head(interaction):
-            await interaction.response.send_message("❌ Только Head может одобрять заявки", ephemeral=True)
+        # 🔒 защита от повторного нажатия
+        if self.done:
+            await interaction.response.send_message(
+                "⚠️ Эта заявка уже обработана",
+                ephemeral=True
+            )
             return
 
+        self.done = True  # блокируем повторные клики
+        
+        # 🔒 проверка роли
+        if not self.is_head(interaction):
+            await interaction.response.send_message(
+                "❌ Только Head может одобрять заявки",
+                ephemeral=True
+            )
+            return
+
+        await interaction.response.defer()
+        
+        # 💰 логика выдачи
         subtract_balance(self.amount)
         add_debt(self.user_id, self.amount)
 
@@ -280,16 +342,53 @@ class LoanView(discord.ui.View):
             f"🛡️Принял: {interaction.user.mention}"
         )
 
+        # 🛠 админ лог (апрув)
+        await admin_log(
+            "Одобрена выдача долга",
+            user,
+            self.amount,
+            interaction.user
+        )
+        
         await update_balance_message()
+        
+        # 🧹 удаление заявки
         await interaction.message.delete()
 
     @discord.ui.button(label="❌ Отказать", style=discord.ButtonStyle.red)
     async def reject(self, interaction: discord.Interaction, button: discord.ui.Button):
 
-        if not self.is_head(interaction):
-            await interaction.response.send_message("❌ Только Head может откланять заявки", ephemeral=True)
+        # 🔒 защита от повторного нажатия
+        if self.done:
+            await interaction.response.send_message(
+                "⚠️ Эта заявка уже обработана",
+                ephemeral=True
+            )
             return
 
+        self.done = True  # блокируем повторные клики
+        
+        # 🔒 проверка роли
+        if not self.is_head(interaction):
+            await interaction.response.send_message(
+                "❌ Только Head может откланять заявки",
+                ephemeral=True
+            )
+            return
+            
+        await interaction.response.defer()
+        
+        user = await bot.fetch_user(self.user_id)
+
+        # 🛠 админ лог (отказ)
+        await admin_log(
+            "Отклонена выдача долга",
+            user,
+            self.amount,
+            interaction.user
+        )
+
+        # 🧹 удаление заявки
         await interaction.message.delete()
 
 
@@ -298,6 +397,7 @@ class PayDebtView(discord.ui.View):
         super().__init__(timeout=None)
         self.user_id = user_id
         self.amount = amount
+        self.done = False
 
     def is_head(self, interaction: discord.Interaction):
         return any(role.id == HEAD_ROLE_ID for role in interaction.user.roles)
@@ -305,10 +405,17 @@ class PayDebtView(discord.ui.View):
     @discord.ui.button(label="✅ Одобрить", style=discord.ButtonStyle.green)
     async def approve(self, interaction: discord.Interaction, button: discord.ui.Button):
 
+        # 🔒 проверка роли
         if not self.is_head(interaction):
-            await interaction.response.send_message("❌ Только Head может одобрять заявки", ephemeral=True)
+            await interaction.response.send_message(
+                "❌ Только Head может одобрять заявки",
+                ephemeral=True
+            )
             return
 
+        await interaction.response.defer()
+        
+        # 💰 логика погашения
         reduce_debt(self.user_id, self.amount)
         add_balance(self.amount)
 
@@ -325,16 +432,42 @@ class PayDebtView(discord.ui.View):
             f"🛡️Принял: {interaction.user.mention}"
         )
 
+        # 🛠 админ лог (апрув)
+        await admin_log(
+            "Одобрено погашение долга",
+            user,
+            self.amount,
+            interaction.user
+        )
+
         await update_balance_message()
+
+        # 🧹 удаление заявки
         await interaction.message.delete()
 
     @discord.ui.button(label="❌ Отказать", style=discord.ButtonStyle.red)
     async def reject(self, interaction: discord.Interaction, button: discord.ui.Button):
 
+        # 🔒 проверка роли
         if not self.is_head(interaction):
-            await interaction.response.send_message("❌ Только Head может откланять заявки", ephemeral=True)
+            await interaction.response.send_message(
+                "❌ Только Head может откланять заявки",
+                ephemeral=True
+            )
             return
+        
+        await interaction.response.defer()
 
+        user = await bot.fetch_user(self.user_id)
+        # 🛠 админ лог (отказ)
+        await admin_log(
+            "Отклонено погашение долга",
+            user,
+            self.amount,
+            interaction.user
+        )
+        
+        # 🧹 удаление заявки
         await interaction.message.delete()
 
 # ================= COMMANDS =================
