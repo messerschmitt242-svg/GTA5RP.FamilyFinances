@@ -202,6 +202,13 @@ async def on_ready():
     await update_balance_message()
     await update_top_sponsors()
 
+    channel = await bot.fetch_channel(CHANNEL_REQUEST)
+
+    await channel.send(
+        "📊 СЕМЕЙНЫЙ БАНК",
+        view=FamilyMenu()
+    )
+
 # ================= VIEWS =================
 class DepositView(discord.ui.View):
     def __init__(self, user_id, amount):
@@ -469,7 +476,61 @@ class PayDebtView(discord.ui.View):
         
         # 🧹 удаление заявки
         await interaction.message.delete()
+        
+class FamilyMenu(discord.ui.View):
+    def __init__(self):
+        super().__init__(timeout=None)
 
+    @discord.ui.button(label="💰 Добровольный взнос", style=discord.ButtonStyle.green)
+    async def deposit(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.send_modal(DepositModal())
+
+    @discord.ui.button(label="💸 Взять в долг", style=discord.ButtonStyle.blurple)
+    async def loan(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.send_modal(LoanModal())
+
+    @discord.ui.button(label="📥 Погасить долг", style=discord.ButtonStyle.gray)
+    async def repay(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.send_modal(PayModal())
+
+    @discord.ui.button(label="📊 Список долгов", style=discord.ButtonStyle.secondary)
+    async def debts(self, interaction: discord.Interaction, button: discord.ui.Button):
+        data = get_all_debts()
+
+        if not data:
+            await interaction.response.send_message("Нет долгов", ephemeral=True)
+            return
+
+        text = "📊 ДОЛГИ\n──────────────\n"
+        for uid, amount in data:
+            text += f"<@{uid}> — {amount:,}\n"
+
+        await interaction.response.send_message(text, ephemeral=True)
+# ================= MODALS ===================
+class DepositModal(discord.ui.Modal, title="Добровольный взнос"):
+    amount = discord.ui.TextInput(label="Сумма")
+
+    async def on_submit(self, interaction: discord.Interaction):
+        await interaction.response.send_message(
+            f"Заявка на взнос: {self.amount.value}",
+            ephemeral=True
+        )
+class LoanModal(discord.ui.Modal, title="Взять в долг"):
+    amount = discord.ui.TextInput(label="Сумма")
+
+    async def on_submit(self, interaction: discord.Interaction):
+        await interaction.response.send_message(
+            f"Заявка на долг: {self.amount.value}",
+            ephemeral=True
+        )
+class PayModal(discord.ui.Modal, title="Погашение долга"):
+    amount = discord.ui.TextInput(label="Сумма")
+
+    async def on_submit(self, interaction: discord.Interaction):
+        await interaction.response.send_message(
+            f"Заявка на погашение: {self.amount.value}",
+            ephemeral=True
+        )
 # ================= COMMANDS =================
 @bot.tree.command(name="deposit_to_family", description="Добровольный взнос на счет семьи", guild=guild)
 async def deposit(interaction: discord.Interaction, amount: int, screenshot: discord.Attachment):
@@ -540,6 +601,13 @@ async def edit_sponsor_cmd(interaction: discord.Interaction, user: discord.Membe
     await update_top_sponsors()
 
     await interaction.response.send_message("OK", ephemeral=True)
-
+    
+@bot.tree.command(name="menu", description="Открыть семейное меню", guild=guild)
+async def menu(interaction: discord.Interaction):
+    await interaction.response.send_message(
+        "📊 СЕМЕЙНЫЙ БАНК",
+        view=FamilyMenu(),
+        ephemeral=False
+    )
 # ================= RUN =================
 bot.run(TOKEN)
