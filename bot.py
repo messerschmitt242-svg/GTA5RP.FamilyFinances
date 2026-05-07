@@ -258,8 +258,10 @@ class PassportUI(discord.ui.View):
     )
     async def add_btn(self, i, b):
 
-        await i.response.send_modal(
-            AddPassportModal()
+        await i.response.send_message(
+            "👤 Выберите игрока",
+            view=AddPassportView(),
+            ephemeral=True
         )
 
     @discord.ui.button(
@@ -318,32 +320,47 @@ async def resolve_member(guild, text):
 
     return None
 
+class MemberSelect(discord.ui.UserSelect):
+
+    def __init__(self):
+        super().__init__(
+            placeholder="Выберите игрока...",
+            min_values=1,
+            max_values=1
+        )
+
+    async def callback(self, interaction):
+
+        member = self.values[0]
+
+        await interaction.response.send_modal(
+            AddPassportModal(member)
+        )
+
+
+class AddPassportView(discord.ui.View):
+
+    def __init__(self):
+        super().__init__(timeout=60)
+
+        self.add_item(MemberSelect())
+
+
 class AddPassportModal(
     discord.ui.Modal,
     title="Добавить паспорт"
 ):
 
-    user = discord.ui.TextInput(
-        label="Игрок"
-    )
+    def __init__(self, member):
+        super().__init__()
+
+        self.member = member
 
     passport = discord.ui.TextInput(
         label="Номер паспорта"
     )
 
     async def on_submit(self, i):
-
-        member = await resolve_member(
-            i.guild,
-            self.user.value
-        )
-
-        if not member:
-
-            return await i.response.send_message(
-                "❌ Игрок не найден",
-                ephemeral=True
-            )
 
         passport = self.passport.value.strip()
 
@@ -352,24 +369,24 @@ class AddPassportModal(
             or len(passport) != 6
         ):
             return await i.response.send_message(
-                "❌ Паспорт должен быть из 6 цифр",
+                "❌ Паспорт должен быть 6-значным",
                 ephemeral=True
             )
 
-        add_passport(member.id, passport)
+        add_passport(self.member.id, passport)
 
         await i.response.send_message(
             embed=discord.Embed(
                 title="✅ ПАСПОРТ ДОБАВЛЕН",
                 description=(
-                    f"👤 {member.mention}\n"
+                    f"👤 {self.member.mention}\n"
                     f"🪪 #{passport}"
                 ),
                 color=discord.Color.green()
             ),
             ephemeral=True
         )
-
+        
 class FindPassportModal(
     discord.ui.Modal,
     title="Найти паспорт"
