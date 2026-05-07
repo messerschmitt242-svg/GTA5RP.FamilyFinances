@@ -350,7 +350,6 @@ async def on_message(message: discord.Message):
         image_url = message.content
 
     if not image_url:
-        await message.channel.send( f"{message.author.mention} ❌ Отправь картинку или файл" )
         return
 
     try:
