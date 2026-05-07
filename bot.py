@@ -548,44 +548,48 @@ class DepositModal(discord.ui.Modal, title="Добровольный взнос"
             return
 
         await interaction.response.send_message(
-            "📎 Отправь картинку следующим сообщением (Ctrl+V или файл)",
+            "📎 Отправь картинку следующим сообщением (можно просто файл или Ctrl+V)",
             ephemeral=True
         )
 
-        def check(msg):
+        def check(msg: discord.Message):
             return (
-                msg.author == interaction.user and
-                msg.channel == interaction.channel and
-                (msg.attachments or msg.content)
+                msg.author.id == interaction.user.id and
+                msg.channel.id == interaction.channel.id
             )
 
         try:
-            msg = await interaction.client.wait_for("message", check=check, timeout=60)
+            msg = await interaction.client.wait_for(
+                "message",
+                check=check,
+                timeout=60
+            )
 
-            attachment = msg.attachments[0] if msg.attachments else None
+            # 🔥 ВАЖНО: ждём именно attachment (а не текст)
+            if not msg.attachments:
+                await interaction.followup.send("❌ Ты не отправил файл", ephemeral=True)
+                return
+
+            attachment = msg.attachments[0]
 
             channel = await interaction.client.fetch_channel(CHANNEL_REPORT)
 
             embed = discord.Embed(title="💰 ЗАЯВКА НА ПОПОЛНЕНИЕ")
             embed.add_field(name="👤", value=interaction.user.mention)
             embed.add_field(name="💸", value=f"{amount:,}")
-
-            # 📎 вставка картинки
-            if attachment:
-                embed.set_image(url=attachment.url)
+            embed.set_image(url=attachment.url)
 
             await channel.send(
                 embed=embed,
                 view=DepositView(interaction.user.id, amount)
             )
 
-            # 🧹 удаляем сообщение пользователя со скрином
             try:
                 await msg.delete()
             except:
                 pass
 
-        except:
+        except asyncio.TimeoutError:
             await interaction.followup.send("⏳ Время вышло", ephemeral=True)
         
 class LoanModal(discord.ui.Modal, title="Взять в долг"):
