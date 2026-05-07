@@ -102,6 +102,12 @@ def delete_passport(uid):
 
     conn.commit()
 
+def get_all_passports():
+    cursor.execute("""
+    SELECT user_id, passport
+    FROM passports
+    """)
+    return cursor.fetchall()
 
 def get_passport(uid):
 
@@ -294,6 +300,52 @@ class PassportUI(discord.ui.View):
 
         await interaction.response.send_modal(
             FindPassportModal()
+        )
+
+    @discord.ui.button(
+        label="📋 Реестр",
+        style=discord.ButtonStyle.gray,
+        custom_id="passport_registry"
+    )
+    async def registry_btn(
+        self,
+        interaction: discord.Interaction,
+        button: discord.ui.Button
+    ):
+
+        data = get_all_passports()
+
+        if not data:
+            return await interaction.response.send_message(
+                "📭 Паспортов нет",
+                ephemeral=True
+            )
+
+        # сортировка по имени на сервере
+        members = []
+
+        for uid, passport in data:
+            member = interaction.guild.get_member(int(uid))
+
+            if member:
+                members.append((member.display_name, member.mention, passport))
+
+        members.sort(key=lambda x: x[0].lower())
+
+        desc = "\n".join([
+            f"👤 {name} | {mention} — 🪪 #{passport}"
+            for name, mention, passport in members
+        ])
+
+        embed = discord.Embed(
+            title="📋 ПАСПОРТНЫЙ РЕЕСТР",
+            description=desc,
+            color=discord.Color.dark_blue()
+        )
+
+        await interaction.response.send_message(
+            embed=embed,
+            ephemeral=True
         )
 
 async def resolve_member(guild, text):
