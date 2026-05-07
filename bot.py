@@ -250,7 +250,29 @@ async def update_top_sponsors():
             return
 
     await channel.send(text)
+    
+async def refresh_top_message():
+    channel = await bot.fetch_channel(CHANNEL_TOP_SPONSORS)
 
+    data = get_top_sponsors()
+
+    if not data:
+        text = "🏆 ТОП СПОНСОРОВ ПУСТ"
+    else:
+        text = "🏆 ТОП СПОНСОРОВ\n──────────────\n"
+        for i, (uid, amount) in enumerate(data, 1):
+            text += f"{i}. <@{uid}> — {amount:,}\n"
+
+    messages = [msg async for msg in channel.history(limit=10)]
+
+    for msg in messages:
+        if msg.author == bot.user:
+            await msg.edit(content=text)
+            return
+
+    msg = await channel.send(text)
+    await msg.pin()
+    
 async def admin_log(action, user, amount, admin):
 
     channel = await bot.fetch_channel(
@@ -414,6 +436,15 @@ class DepositView(discord.ui.View):
 
         add_sponsor(self.user_id, self.amount)
 
+        channel = await bot.fetch_channel(CHANNEL_DEPOSITS_LOG)
+
+        await channel.send(
+            f"💰 ПОПОЛНЕНИЕ СЕМЬИ\n"
+            f"👤 Пользователь: <@{self.user_id}>\n"
+            f"💸 Сумма: {self.amount:,}\n"
+            f"🛡️ Одобрил: {interaction.user.mention}"
+        )
+
         await update_balance_message()
         await update_top_sponsors()
 
@@ -427,6 +458,8 @@ class DepositView(discord.ui.View):
         )
 
         await interaction.message.delete()
+
+        await refresh_top_message()
 
     @discord.ui.button(
         label="❌ Отказать",
@@ -491,14 +524,13 @@ class LoanView(discord.ui.View):
             interaction.user
         )
 
-        channel = await bot.fetch_channel(
-            CHANNEL_APPROVE
-        )
+        channel = await bot.fetch_channel(CHANNEL_APPROVE)
 
         await channel.send(
-            f"💸 ДОЛГ\n"
-            f"{user.mention}\n"
-            f"💰 {self.amount:,}"
+            f"💸 ВЫДАН ДОЛГ\n"
+            f"👤 Пользователь: <@{self.user_id}>\n"
+            f"💰 Сумма: {self.amount:,}\n"
+            f"🛡️ Одобрил: {interaction.user.mention}"
         )
 
         await interaction.message.delete()
@@ -551,9 +583,13 @@ class PayDebtView(discord.ui.View):
                 ephemeral=True
             )
 
-        reduce_debt(self.user_id, self.amount)
+        current_debt = get_debt(self.user_id)
 
-        add_balance(self.amount)
+        paid = min(self.amount, current_debt)
+        remaining = current_debt - paid
+
+        reduce_debt(self.user_id, paid)
+        add_balance(paid)
 
         await update_balance_message()
 
@@ -571,9 +607,11 @@ class PayDebtView(discord.ui.View):
         )
 
         await channel.send(
-            f"📥 ПОГАШЕНИЕ\n"
-            f"{user.mention}\n"
-            f"💰 {self.amount:,}"
+            f"📥 ПОГАШЕНИЕ ДОЛГА\n"
+            f"👤 Пользователь: <@{self.user_id}>\n"
+            f"💰 Внесено: {paid:,}\n"
+            f"📉 Остаток долга: {remaining:,}\n"
+            f"🛡️ Одобрил: {interaction.user.mention}"
         )
 
         user = await bot.fetch_user(self.user_id)
@@ -732,31 +770,15 @@ class PayDebtModal(discord.ui.Modal, title="Погашение долга"):
 
         async def callback(message, image_url):
 
-            channel = await bot.fetch_channel(
-                CHANNEL_REPORT
-            )
+            channel = await bot.fetch_channel(CHANNEL_REPORT)
 
-            embed = discord.Embed(
-                title="📥 ПОГАШЕНИЕ",
-                color=discord.Color.orange()
-            )
+            embed = discord.Embed(title="📥 ПОГАШЕНИЕ", сolor=discord.Color.orange())
 
-            embed.add_field(
-                name="👤",
-                value=interaction.user.mention
-            )
-
-            embed.add_field(
-                name="💰",
-                value=f"{amount:,}"
-            )
-
+            embed.add_field(name="👤", value=interaction.user.mention)
+            embed.add_field(name="💰", value=f"{amount:,}")
             embed.set_image(url=image_url)
 
-            await channel.send(
-                embed=embed,
-                view=PayDebtView(uid, amount)
-            )
+            await channel.send(embed=embed, view=PayDebtView(uid, amount))
 
         active_uploads[uid] = {
             "callback": callback,
@@ -764,7 +786,8 @@ class PayDebtModal(discord.ui.Modal, title="Погашение долга"):
         }
 
         await interaction.response.send_message(
-            f"📊 Долг: {debt:,}\n📎 Отправь скриншот",
+            f"📊 Текущий долг: {debt:,}\n"
+            f"📎 Отправь скриншот оплаты",
             ephemeral=True
         )
 
@@ -854,6 +877,24 @@ async def menu(interaction: discord.Interaction):
         "╚══════════════════════╝",
         view=FamilyMenu()
     )
+@bot.tree.command(
+    name="edit_sponsor",
+    description="Добавить старого спонсора",
+    guild=guild
+)
+async def edit_sponsor(
+    interaction: discord.Interaction,
+    user: discord.Member,
+    amount: int
+):
 
+    set_sponsor(user.id, amount)
+
+    await refresh_top_message()
+
+    await interaction.response.send_message(
+        f"✅ Добавлено: {user.mention} — {amount:,}",
+        ephemeral=True
+    )
 # ================= RUN =================
 bot.run(TOKEN)
