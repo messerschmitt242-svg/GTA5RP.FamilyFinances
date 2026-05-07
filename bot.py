@@ -336,7 +336,7 @@ class LoanView(discord.ui.View):
             interaction.user
         )
 
-    await interaction.message.delete()
+        await interaction.message.delete()
 
 class PayDebtView(discord.ui.View):
     def __init__(self, user_id, amount):
