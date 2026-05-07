@@ -255,11 +255,16 @@ class PassportUI(discord.ui.View):
 
     @discord.ui.button(
         label="➕ Добавить",
-        style=discord.ButtonStyle.green
+        style=discord.ButtonStyle.green,
+        custom_id="passport_add"
     )
-    async def add_btn(self, i, b):
+    async def add_btn(
+        self,
+        interaction: discord.Interaction,
+        button: discord.ui.Button
+    ):
 
-        await i.response.send_message(
+        await interaction.response.send_message(
             "👤 Выберите игрока",
             view=AddPassportView(),
             ephemeral=True
@@ -267,21 +272,31 @@ class PassportUI(discord.ui.View):
 
     @discord.ui.button(
         label="❌ Удалить",
-        style=discord.ButtonStyle.red
+        style=discord.ButtonStyle.red,
+        custom_id="passport_delete"
     )
-    async def del_btn(self, i, b):
+    async def del_btn(
+        self,
+        interaction: discord.Interaction,
+        button: discord.ui.Button
+    ):
 
-        await i.response.send_modal(
+        await interaction.response.send_modal(
             DeletePassportModal()
         )
 
     @discord.ui.button(
         label="🔍 Найти",
-        style=discord.ButtonStyle.blurple
+        style=discord.ButtonStyle.blurple,
+        custom_id="passport_find"
     )
-    async def find_btn(self, i, b):
+    async def find_btn(
+        self,
+        interaction: discord.Interaction,
+        button: discord.ui.Button
+    ):
 
-        await i.response.send_modal(
+        await interaction.response.send_modal(
             FindPassportModal()
         )
 
@@ -843,6 +858,7 @@ async def setbank(ctx, amount: int):
     )
 @bot.event
 async def on_ready():
+    bot.add_view(PassportUI())
     await bot.tree.sync(guild=guild)
     print("BANK ONLINE")
     await update_bank()
