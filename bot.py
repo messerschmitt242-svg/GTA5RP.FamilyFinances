@@ -236,25 +236,29 @@ async def on_message(message: discord.Message):
 
     state = active_uploads[uid]
 
-    # ищем файл
+    # 🔒 проверка канала (ВАЖНО)
+    if message.channel.id != state["channel_id"]:
+        return
+
     file = message.attachments[0] if message.attachments else None
+
     image_url = None
 
     if file:
         image_url = file.url
+
     elif message.content.startswith("http"):
         image_url = message.content
 
+    # ❌ если вообще ничего нет — игнор
     if not image_url:
         return
 
-    # удаляем сообщение пользователя
     try:
         await message.delete()
     except:
         pass
 
-    # вызываем обработчик
     await state["callback"](message, image_url)
 
     del active_uploads[uid]
@@ -548,6 +552,7 @@ class AmountModal(discord.ui.Modal):
 
         active_uploads[uid] = {
             "callback": upload_callback
+            "channel_id": interaction.channel.id
         }
 
         text = "📎 Отправь картинку (файл или Ctrl+V)"
