@@ -197,21 +197,28 @@ async def update_top_sponsors():
 # ================= READY =================
 @bot.event
 async def on_ready():
-    bot.add_view(FamilyMenu())  # 💣 ВАЖНО
+    bot.add_view(FamilyMenu())  # ✔ регистрируем persistent view
+
     await bot.tree.sync(guild=guild)
+
+    print("BOT ONLINE")
 
     channel = await bot.fetch_channel(CHANNEL_REQUEST)
 
-    messages = [msg async for msg in channel.history(limit=5)]
+    messages = [msg async for msg in channel.history(limit=10)]
 
+    # ищем уже существующее меню
     for msg in messages:
-        if msg.author == bot.user:
-            return  # уже есть меню → не спамим
+        if msg.author == bot.user and "СЕМЕЙНЫЙ БАНК" in msg.content:
+            return
 
-    await channel.send(
+    # создаём новое меню
+    msg = await channel.send(
         "📊 СЕМЕЙНЫЙ БАНК",
         view=FamilyMenu()
     )
+
+    await msg.pin()
 
 # ================= VIEWS =================
 class DepositView(discord.ui.View):
@@ -485,29 +492,37 @@ class FamilyMenu(discord.ui.View):
     def __init__(self):
         super().__init__(timeout=None)
 
-    @discord.ui.button(label="💰 Добровольный взнос", style=discord.ButtonStyle.green)
+    @discord.ui.button(
+        label="💰 Добровольный взнос",
+        style=discord.ButtonStyle.green,
+        custom_id="family:deposit"
+    )
     async def deposit(self, interaction: discord.Interaction, button: discord.ui.Button):
-        try:
-            await interaction.response.send_modal(DepositModal())
-        except Exception as e:
-            await interaction.response.send_message(f"❌ Ошибка: {e}", ephemeral=True)
+        await interaction.response.send_modal(DepositModal())
 
-    @discord.ui.button(label="💸 Взять в долг", style=discord.ButtonStyle.blurple)
+    @discord.ui.button(
+        label="💸 Взять в долг",
+        style=discord.ButtonStyle.blurple,
+        custom_id="family:loan"
+    )
     async def loan(self, interaction: discord.Interaction, button: discord.ui.Button):
-        try:
-            await interaction.response.send_modal(LoanModal())
-        except Exception as e:
-            await interaction.response.send_message(f"❌ Ошибка: {e}", ephemeral=True)
+        await interaction.response.send_modal(LoanModal())
 
-    @discord.ui.button(label="📥 Погасить долг", style=discord.ButtonStyle.gray)
+    @discord.ui.button(
+        label="📥 Погасить долг",
+        style=discord.ButtonStyle.gray,
+        custom_id="family:repay"
+    )
     async def repay(self, interaction: discord.Interaction, button: discord.ui.Button):
-        try:
-            await interaction.response.send_modal(PayDebtModal())
-        except Exception as e:
-            await interaction.response.send_message(f"❌ Ошибка: {e}", ephemeral=True)
+        await interaction.response.send_modal(PayDebtModal())
 
-    @discord.ui.button(label="📊 Список долгов", style=discord.ButtonStyle.secondary)
+    @discord.ui.button(
+        label="📊 Список долгов",
+        style=discord.ButtonStyle.secondary,
+        custom_id="family:debts"
+    )
     async def debts(self, interaction: discord.Interaction, button: discord.ui.Button):
+
         data = get_all_debts()
 
         if not data:
@@ -519,6 +534,7 @@ class FamilyMenu(discord.ui.View):
             text += f"<@{uid}> — {amount:,}\n"
 
         await interaction.response.send_message(text, ephemeral=True)
+        
 # ================= MODALS ===================
 class DepositModal(discord.ui.Modal, title="Добровольный взнос"):
     amount = discord.ui.TextInput(label="Сумма", required=True)
