@@ -117,15 +117,11 @@ def get_passport(uid):
 def passport_embed():
 
     return discord.Embed(
-        title="🪪 ГОСУДАРСТВЕННЫЙ РЕЕСТР",
+        title="🪪 РЕЕСТР WAYNE INC.",
         description=(
             "```fix\n"
             "ПАСПОРТНАЯ СИСТЕМА GTA RP\n"
             "```\n\n"
-
-            "➕ Добавить паспорт\n"
-            "❌ Удалить паспорт\n"
-            "🔍 Найти паспорт\n\n"
 
             "────────────────────────────\n"
             "⚙️ Используйте кнопки ниже"
@@ -227,9 +223,9 @@ def bank_embed():
         top_text = f"<@{top[0][0]}> — 💰 ${top[0][1]:,}"
 
     return discord.Embed(
-        title="🏦 БАНКОВСКИЙ ТЕРМИНАЛ WAYNE ENT.",
+        title="🏦 БАНКОВСКИЙ ТЕРМИНАЛ WAYNE INC.",
         description=(
-            "```css\nФИНАНСОВАЯ СИСТЕМА WAYNE ENT.\n```\n\n"
+            "```css\nФИНАНСОВАЯ СИСТЕМА WAYNE INC.\n```\n\n"
 
             "💰 **БАЛАНС СЕМЬИ:** "
             f"${get_balance():,}\n"
