@@ -1,4 +1,3 @@
-```python
 import discord
 from discord.ext import commands
 from discord import app_commands
@@ -808,4 +807,3 @@ async def menu(interaction: discord.Interaction):
 
 # ================= RUN =================
 bot.run(TOKEN)
-```
