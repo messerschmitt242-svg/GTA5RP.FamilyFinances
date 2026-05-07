@@ -344,44 +344,42 @@ async def on_message(message: discord.Message):
 
     image_url = None
 
-    # обычный файл
+    # 1. обычный файл (самый надёжный источник)
     if message.attachments:
         image_url = message.attachments[0].url
 
-    # вставленная ссылка
-    elif message.content.startswith("http"):
+    # 2. ссылка в тексте
+    elif message.content and message.content.startswith("http"):
         image_url = message.content
 
-    # discord embed image
+    # 3. embed (fallback)
     elif message.embeds:
+        for embed in message.embeds:
+            if embed.image:
+                image_url = embed.image.url
+                break
+            if embed.thumbnail:
+                image_url = embed.thumbnail.url
+                break
 
-        embed = message.embeds[0]
-
-        if embed.image:
-            image_url = embed.image.url
-
-        elif embed.thumbnail:
-            image_url = embed.thumbnail.url
-
-    # если картинки нет
     if not image_url:
-
         await message.channel.send(
             f"{message.author.mention} ❌ Картинка не обнаружена",
             delete_after=5
         )
-
         return
-
-    try:
-        await message.delete()
-    except:
-        pass
-
+        
     try:
         await state["callback"](message, image_url)
     except Exception as e:
         print("UPLOAD CALLBACK ERROR:", e)
+        return  # если не отправилось — не удаляем сообщение
+
+    # удаляем ТОЛЬКО после успешной отправки в CHANNEL_REPORT
+    try:
+        await message.delete()
+    except:
+        pass
 
     if uid in active_uploads:
 
