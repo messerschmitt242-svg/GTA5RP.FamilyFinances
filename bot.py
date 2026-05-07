@@ -538,47 +538,37 @@ class FamilyMenu(discord.ui.View):
 # ================= MODALS ===================
 class DepositModal(discord.ui.Modal, title="Добровольный взнос"):
     amount = discord.ui.TextInput(label="Сумма", required=True)
+    screenshot_url = discord.ui.TextInput(
+        label="Скриншот (URL или оставить пустым)",
+        required=False
+    )
 
     async def on_submit(self, interaction: discord.Interaction):
+        await interaction.response.defer(ephemeral=True)
 
         try:
-            amount = int(self.amount.value)
-        except:
-            await interaction.response.send_message("❌ Неверная сумма", ephemeral=True)
-            return
-
-        await interaction.response.send_message(
-            "📎 Отправь картинку следующим сообщением (Ctrl+V или файл)",
-            ephemeral=True
-        )
-
-        def check(msg):
-            return msg.author == interaction.user and msg.channel == interaction.channel
-
-        try:
-            msg = await interaction.client.wait_for("message", check=check, timeout=60)
-
-            attachment = msg.attachments[0] if msg.attachments else None
-
             channel = await interaction.client.fetch_channel(CHANNEL_REPORT)
 
-            embed = discord.Embed(title="💰 ЗАЯВКА НА ПОПОЛНЕНИЕ")
+            embed = discord.Embed(
+                title="💰 ЗАЯВКА НА ПОПОЛНЕНИЕ",
+                color=discord.Color.green()
+            )
             embed.add_field(name="👤", value=interaction.user.mention)
-            embed.add_field(name="💸", value=str(amount))
+            embed.add_field(name="💸", value=self.amount.value)
 
-            if attachment:
-                embed.set_image(url=attachment.url)
+            # 📷 добавляем картинку только если есть
+            if self.screenshot_url.value:
+                embed.set_image(url=self.screenshot_url.value)
 
-            await channel.send(embed=embed, view=DepositView(interaction.user.id, amount))
+            await channel.send(
+                embed=embed,
+                view=DepositView(interaction.user.id, int(self.amount.value))
+            )
 
-            # 🧹 УДАЛЕНИЕ СООБЩЕНИЯ С КАРТИНКОЙ
-            try:
-                await msg.delete()
-            except:
-                pass
+            await interaction.followup.send("✅ Заявка отправлена", ephemeral=True)
 
-        except:
-            await interaction.followup.send("⏳ Время вышло", ephemeral=True)
+        except Exception as e:
+            await interaction.followup.send(f"❌ Ошибка: {e}", ephemeral=True)
         
 class LoanModal(discord.ui.Modal, title="Взять в долг"):
     amount = discord.ui.TextInput(label="Сумма", required=True)
@@ -623,49 +613,36 @@ class LoanModal(discord.ui.Modal, title="Взять в долг"):
         
 class PayDebtModal(discord.ui.Modal, title="Погашение долга"):
     amount = discord.ui.TextInput(label="Сумма", required=True)
+    screenshot_url = discord.ui.TextInput(
+        label="Скриншот (URL или оставить пустым)",
+        required=False
+    )
 
     async def on_submit(self, interaction: discord.Interaction):
+        await interaction.response.defer(ephemeral=True)
 
         try:
-            amount = int(self.amount.value)
-        except:
-            await interaction.response.send_message("❌ Неверная сумма", ephemeral=True)
-            return
-
-        debt = get_debt(interaction.user.id)
-
-        await interaction.response.send_message(
-            f"💡 Долг: {debt:,}\n📎 Отправь скриншот (Ctrl+V или файл)",
-            ephemeral=True
-        )
-
-        def check(msg):
-            return msg.author == interaction.user and msg.channel == interaction.channel
-
-        try:
-            msg = await interaction.client.wait_for("message", check=check, timeout=60)
-
-            attachment = msg.attachments[0] if msg.attachments else None
-
             channel = await interaction.client.fetch_channel(CHANNEL_REPORT)
 
-            embed = discord.Embed(title="📥 ПОГАШЕНИЕ")
+            embed = discord.Embed(
+                title="📥 ПОГАШЕНИЕ",
+                color=discord.Color.orange()
+            )
             embed.add_field(name="👤", value=interaction.user.mention)
-            embed.add_field(name="💰", value=str(amount))
+            embed.add_field(name="💰", value=self.amount.value)
 
-            if attachment:
-                embed.set_image(url=attachment.url)
+            if self.screenshot_url.value:
+                embed.set_image(url=self.screenshot_url.value)
 
-            await channel.send(embed=embed, view=PayDebtView(interaction.user.id, amount))
+            await channel.send(
+                embed=embed,
+                view=PayDebtView(interaction.user.id, int(self.amount.value))
+            )
 
-            # 🧹 удаляем сообщение со скрином
-            try:
-                await msg.delete()
-            except:
-                pass
+            await interaction.followup.send("✅ Заявка отправлена", ephemeral=True)
 
-        except:
-            await interaction.followup.send("⏳ Время вышло", ephemeral=True)
+        except Exception as e:
+            await interaction.followup.send(f"❌ Ошибка: {e}", ephemeral=True)
         
 # ================= COMMANDS =================
 @bot.tree.command(name="deposit_to_family", description="Добровольный взнос на счет семьи", guild=guild)
