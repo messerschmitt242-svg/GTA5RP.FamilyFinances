@@ -219,7 +219,7 @@ class DepositView(discord.ui.View):
                 "❌ Только Head может подтверждать заявки",
                 ephemeral=True
             )
-        return
+            return
         
         add_balance(self.amount)
         add_sponsor(self.user_id, self.amount)
@@ -259,7 +259,7 @@ class DepositView(discord.ui.View):
                     "❌ Только Head может отклонять заявки",
                     ephemeral=True
                 )
-            return
+                return
             
             user = await bot.fetch_user(self.user_id)
 
@@ -287,7 +287,7 @@ class LoanView(discord.ui.View):
                 "❌ Только Head может подтверждать заявки",
                 ephemeral=True
             )
-        return
+            return
         
         subtract_balance(self.amount)
         add_debt(self.user_id, self.amount)
@@ -325,7 +325,7 @@ class LoanView(discord.ui.View):
                 "❌ Только Head может отклонять заявки",
                 ephemeral=True
             )
-        return
+            return
 
         user = await bot.fetch_user(self.user_id)
 
@@ -353,7 +353,7 @@ class PayDebtView(discord.ui.View):
                 "❌ Только Head может подтверждать заявки",
                 ephemeral=True
             )
-        return
+            return
 
         reduce_debt(self.user_id, self.amount)
         add_balance(self.amount)
@@ -391,7 +391,7 @@ class PayDebtView(discord.ui.View):
                 "❌ Только Head может отклонять заявки",
                 ephemeral=True
             )
-        return
+            return
 
         user = await bot.fetch_user(self.user_id)
 
