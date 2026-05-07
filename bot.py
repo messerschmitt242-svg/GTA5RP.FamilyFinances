@@ -17,6 +17,8 @@ CHANNEL_APPROVE = 1448688906299113684
 CHANNEL_FAMILY_BALANCE = 1501339448250601472
 CHANNEL_TOP_SPONSORS = 1447514330252836906
 
+PASSPORT_CHANNEL = 1447305826644525136
+
 # ================= COLORS =================
 BANK_COLOR = discord.Color.from_rgb(0, 255, 140)
 
@@ -71,7 +73,65 @@ CREATE TABLE IF NOT EXISTS bank_logs (
 """)
 conn.commit()
 
+cursor.execute("""
+CREATE TABLE IF NOT EXISTS passports (
+    user_id TEXT PRIMARY KEY,
+    passport TEXT UNIQUE
+)
+""")
+conn.commit()
+
 # ================= DB FUNCS =================
+def add_passport(uid, passport):
+
+    cursor.execute("""
+    INSERT OR REPLACE INTO passports
+    VALUES (?, ?)
+    """, (str(uid), passport))
+
+    conn.commit()
+
+
+def delete_passport(uid):
+
+    cursor.execute("""
+    DELETE FROM passports
+    WHERE user_id=?
+    """, (str(uid),))
+
+    conn.commit()
+
+
+def get_passport(uid):
+
+    cursor.execute("""
+    SELECT passport FROM passports
+    WHERE user_id=?
+    """, (str(uid),))
+
+    row = cursor.fetchone()
+
+    return row[0] if row else None
+
+def passport_embed():
+
+    return discord.Embed(
+        title="🪪 ГОСУДАРСТВЕННЫЙ РЕЕСТР",
+        description=(
+            "```fix\n"
+            "ПАСПОРТНАЯ СИСТЕМА GTA RP\n"
+            "```\n\n"
+
+            "➕ Добавить паспорт\n"
+            "❌ Удалить паспорт\n"
+            "🔍 Найти паспорт\n\n"
+
+            "────────────────────────────\n"
+            "⚙️ Используйте кнопки ниже"
+        ),
+        color=discord.Color.dark_blue()
+    )
+
 def add_log(action, uid, amount):
     cursor.execute("""
     INSERT INTO bank_logs (action, user_id, amount, time)
@@ -186,6 +246,211 @@ def bank_embed():
         ),
         color=BANK_COLOR
     )
+
+class PassportUI(discord.ui.View):
+
+    def __init__(self):
+        super().__init__(timeout=None)
+
+    @discord.ui.button(
+        label="➕ Добавить",
+        style=discord.ButtonStyle.green
+    )
+    async def add_btn(self, i, b):
+
+        await i.response.send_modal(
+            AddPassportModal()
+        )
+
+    @discord.ui.button(
+        label="❌ Удалить",
+        style=discord.ButtonStyle.red
+    )
+    async def del_btn(self, i, b):
+
+        await i.response.send_modal(
+            DeletePassportModal()
+        )
+
+    @discord.ui.button(
+        label="🔍 Найти",
+        style=discord.ButtonStyle.blurple
+    )
+    async def find_btn(self, i, b):
+
+        await i.response.send_modal(
+            FindPassportModal()
+        )
+
+class AddPassportModal(
+    discord.ui.Modal,
+    title="Добавить паспорт"
+):
+
+    user = discord.ui.TextInput(
+        label="ID пользователя"
+    )
+
+    passport = discord.ui.TextInput(
+        label="Номер паспорта"
+    )
+
+    async def on_submit(self, i):
+
+        try:
+            uid = int(
+                self.user.value
+                .replace("<@", "")
+                .replace(">", "")
+                .replace("!", "")
+            )
+
+        except:
+            return await i.response.send_message(
+                "❌ Неверный пользователь",
+                ephemeral=True
+            )
+
+        if (
+            not self.passport.value.isdigit()
+            or len(self.passport.value) != 6
+        ):
+            return await i.response.send_message(
+                "❌ Паспорт должен быть 6 цифр",
+                ephemeral=True
+            )
+
+        add_passport(uid, self.passport.value)
+
+        await i.response.send_message(
+            embed=discord.Embed(
+                title="✅ ПАСПОРТ ДОБАВЛЕН",
+                description=(
+                    f"👤 <@{uid}>\n"
+                    f"🪪 #{self.passport.value}"
+                ),
+                color=discord.Color.green()
+            ),
+            ephemeral=True
+        )
+
+class FindPassportModal(
+    discord.ui.Modal,
+    title="Найти паспорт"
+):
+
+    user = discord.ui.TextInput(
+        label="ID пользователя"
+    )
+
+    async def on_submit(self, i):
+
+        try:
+            uid = int(
+                self.user.value
+                .replace("<@", "")
+                .replace(">", "")
+                .replace("!", "")
+            )
+
+        except:
+            return await i.response.send_message(
+                "❌ Неверный пользователь",
+                ephemeral=True
+            )
+
+        passport = get_passport(uid)
+
+        if not passport:
+
+            return await i.response.send_message(
+                "❌ Паспорт не найден",
+                ephemeral=True
+            )
+
+        await i.response.send_message(
+            embed=discord.Embed(
+                title="🪪 ПАСПОРТ ГРАЖДАНИНА",
+                description=(
+                    f"👤 <@{uid}>\n"
+                    f"🪪 #{passport}"
+                ),
+                color=discord.Color.blurple()
+            ),
+            ephemeral=True
+        )
+
+class DeletePassportModal(
+    discord.ui.Modal,
+    title="Удалить паспорт"
+):
+
+    user = discord.ui.TextInput(
+        label="ID пользователя"
+    )
+
+    async def on_submit(self, i):
+
+        try:
+            uid = int(
+                self.user.value
+                .replace("<@", "")
+                .replace(">", "")
+                .replace("!", "")
+            )
+
+        except:
+            return await i.response.send_message(
+                "❌ Неверный пользователь",
+                ephemeral=True
+            )
+
+        await i.response.send_message(
+            embed=discord.Embed(
+                title="⚠️ ПОДТВЕРЖДЕНИЕ",
+                description=f"Удалить паспорт <@{uid}>?",
+                color=discord.Color.orange()
+            ),
+            view=DeletePassportConfirm(uid),
+            ephemeral=True
+        )
+
+class DeletePassportConfirm(discord.ui.View):
+
+    def __init__(self, uid):
+        super().__init__(timeout=30)
+        self.uid = uid
+
+    @discord.ui.button(
+        label="✅ Да",
+        style=discord.ButtonStyle.green
+    )
+    async def yes(self, i, b):
+
+        delete_passport(self.uid)
+
+        await i.response.edit_message(
+            embed=discord.Embed(
+                title="🗑️ УДАЛЕНО",
+                description=f"<@{self.uid}>",
+                color=discord.Color.red()
+            ),
+            view=None
+        )
+
+    @discord.ui.button(
+        label="❌ Нет",
+        style=discord.ButtonStyle.gray
+    )
+    async def no(self, i, b):
+
+        await i.response.edit_message(
+            embed=discord.Embed(
+                title="❌ ОТМЕНЕНО",
+                color=discord.Color.dark_gray()
+            ),
+            view=None
+        )
 
 class BankUI(discord.ui.View):
     def __init__(self):
@@ -521,6 +786,36 @@ async def on_ready():
     await bot.tree.sync(guild=guild)
     print("BANK ONLINE")
     await update_bank()
+
+    passport_channel = await bot.fetch_channel(
+        1447305826644525136
+    )
+
+    msgs = [
+        m async for m
+        in passport_channel.history(limit=10)
+    ]
+
+    exists = False
+
+    for m in msgs:
+
+        if (
+            m.author == bot.user
+            and m.embeds
+            and "ГОСУДАРСТВЕННЫЙ РЕЕСТР"
+            in m.embeds[0].title
+        ):
+            exists = True
+
+    if not exists:
+
+        msg = await passport_channel.send(
+            embed=passport_embed(),
+            view=PassportUI()
+        )
+
+        await msg.pin()
 
 # ================= RUN =================
 bot.run(TOKEN)
