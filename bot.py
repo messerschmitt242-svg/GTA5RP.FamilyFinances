@@ -468,41 +468,38 @@ class FamilyMenu(discord.ui.View):
 
     @discord.ui.button(label="💰 Взнос", style=discord.ButtonStyle.green, custom_id="dep")
     async def deposit(self, interaction: discord.Interaction, button: discord.ui.Button):
-        try:
-            await interaction.response.defer(ephemeral=True)
-            await interaction.followup.send(
-                "💰 Введи сумму:",
-                view=DepositFlowView(interaction.user.id),
-                ephemeral=True
-            )
-        except Exception as e:
-            print("BUTTON ERROR:", e)
+
+        await interaction.response.defer(ephemeral=True)
+
+        await interaction.followup.send(
+            "💰 Введи сумму:",
+            view=AmountModal("deposit"),
+            ephemeral=True
+        )
 
     @discord.ui.button(label="💸 Долг", style=discord.ButtonStyle.blurple, custom_id="loan")
     async def loan(self, interaction: discord.Interaction, button: discord.ui.Button):
-        try:
-            await interaction.response.defer(ephemeral=True)
-            await interaction.followup.send(
-                "💸 Введи сумму:",
-                view=LoanFlowView(interaction.user.id),
-                ephemeral=True
-            )
-        except Exception as e:
-            print("BUTTON ERROR:", e)
+
+        await interaction.response.defer(ephemeral=True)
+
+        await interaction.followup.send(
+            "💸 Введи сумму:",
+            view=AmountModal("loan"),
+            ephemeral=True
+        )
 
     @discord.ui.button(label="📥 Погасить", style=discord.ButtonStyle.gray, custom_id="repay")
     async def repay(self, interaction: discord.Interaction, button: discord.ui.Button):
-        try:
-            debt = get_debt(interaction.user.id)
 
-            await interaction.response.defer(ephemeral=True)
-            await interaction.followup.send(
-                f"📊 Долг: {debt:,}\nВведите сумму:",
-                view=RepayFlowView(interaction.user.id, debt),
-                ephemeral=True
-            )
-        except Exception as e:
-            print("BUTTON ERROR:", e)
+        debt = get_debt(interaction.user.id)
+
+        await interaction.response.defer(ephemeral=True)
+
+        await interaction.followup.send(
+            f"📊 Долг: {debt:,}\n💰 Введи сумму:",
+            view=AmountModal("repay", debt),
+            ephemeral=True
+        )
 
     @discord.ui.button(label="📊 Долги", style=discord.ButtonStyle.secondary)
     async def list(self, interaction: discord.Interaction, button: discord.ui.Button):
