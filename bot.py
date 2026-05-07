@@ -21,7 +21,10 @@ CHANNEL_APPROVE = 1448688906299113684
 
 # ================= BOT =================
 intents = discord.Intents.default()
+
 intents.message_content = True
+intents.messages = True
+intents.guild_messages = True
 
 bot = commands.Bot(
     command_prefix="!",
@@ -341,15 +344,33 @@ async def on_message(message: discord.Message):
 
     image_url = None
 
+    # обычный файл
     if message.attachments:
-
         image_url = message.attachments[0].url
 
+    # вставленная ссылка
     elif message.content.startswith("http"):
-
         image_url = message.content
 
+    # discord embed image
+    elif message.embeds:
+
+        embed = message.embeds[0]
+
+        if embed.image:
+            image_url = embed.image.url
+
+        elif embed.thumbnail:
+            image_url = embed.thumbnail.url
+
+    # если картинки нет
     if not image_url:
+
+        await message.channel.send(
+            f"{message.author.mention} ❌ Картинка не обнаружена",
+            delete_after=5
+        )
+
         return
 
     try:
@@ -357,7 +378,12 @@ async def on_message(message: discord.Message):
     except:
         pass
 
-    await state["callback"](message, image_url)
+    try:
+        await state["callback"](message, image_url)
+    except Exception as e:
+        print("UPLOAD CALLBACK ERROR:", e)
+
+    if uid in active_uploads:
 
     del active_uploads[uid]
 
@@ -377,6 +403,8 @@ class DepositView(discord.ui.View):
     )
     async def approve(self, interaction, button):
 
+        await interaction.response.defer()
+        
         if not is_head(interaction.user):
 
             return await interaction.response.send_message(
@@ -441,6 +469,8 @@ class LoanView(discord.ui.View):
     )
     async def approve(self, interaction, button):
 
+        await interaction.response.defer()
+        
         if not is_head(interaction.user):
 
             return await interaction.response.send_message(
@@ -514,6 +544,8 @@ class PayDebtView(discord.ui.View):
     )
     async def approve(self, interaction, button):
 
+        await interaction.response.defer()
+        
         if not is_head(interaction.user):
 
             return await interaction.response.send_message(
@@ -817,15 +849,11 @@ class FamilyMenu(discord.ui.View):
 async def menu(interaction: discord.Interaction):
 
     await interaction.response.send_message(
-        "┏━━━━━━━━━━━━━━━━━━━━━━┓\n"
-        "┃      🏦 WAYNE BANK 🏦      ┃\n"
-        "┣━━━━━━━━━━━━━━━━━━━━━━┫\n"
-        "┃  💎 СЕМЕЙНЫЙ БАНК 💎  ┃\n"
-        "┃                      ┃\n"
-        "┃  💰 Взносы           ┃\n"
-        "┃  💸 Долги            ┃\n"
-        "┃  📊 Финансы семьи    ┃\n"
-        "┗━━━━━━━━━━━━━━━━━━━━━━┛",
+        "╔══════════════════════╗\n"
+        "║      🏦 WAYNE BANK 🏦      ║\n"
+        "╠══════════════════════╣\n"
+        "║   💰 СЕМЕЙНЫЙ ФОНД 💰   ║\n"
+        "╚══════════════════════╝",
         view=FamilyMenu()
     )
 
