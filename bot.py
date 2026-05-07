@@ -522,54 +522,45 @@ class FamilyMenu(discord.ui.View):
 # ================= MODALS ===================
 class DepositModal(discord.ui.Modal, title="Добровольный взнос"):
     amount = discord.ui.TextInput(label="Сумма", required=True)
-    screenshot = discord.ui.TextInput(label="Скриншот URL", required=True)
+    screenshot = discord.ui.TextInput(
+        label="Скриншот (URL или напиши 'файл' ниже)",
+        required=True
+    )
 
     async def on_submit(self, interaction: discord.Interaction):
 
-        # 🔒 проверка суммы
         try:
             amount = int(self.amount.value)
         except:
-            await interaction.response.send_message(
-                "❌ Введи корректное число",
-                ephemeral=True
-            )
+            await interaction.response.send_message("❌ Неверная сумма", ephemeral=True)
             return
 
-        # 🔒 проверка URL (очень простая защита)
-        if not self.screenshot.value.startswith("http"):
-            await interaction.response.send_message(
-                "❌ Введи корректный URL скриншота",
-                ephemeral=True
-            )
-            return
+        await interaction.response.send_message(
+            "📎 Отправь картинку следующим сообщением (файл или вставь Ctrl+V)",
+            ephemeral=True
+        )
+
+        def check(msg):
+            return msg.author == interaction.user and msg.channel == interaction.channel
 
         try:
+            msg = await interaction.client.wait_for("message", check=check, timeout=60)
+
+            attachment = msg.attachments[0] if msg.attachments else None
+
             channel = await interaction.client.fetch_channel(CHANNEL_REPORT)
 
-            embed = discord.Embed(
-                title="💰 ЗАЯВКА НА ПОПОЛНЕНИЕ",
-                color=discord.Color.green()
-            )
+            embed = discord.Embed(title="💰 ЗАЯВКА НА ПОПОЛНЕНИЕ")
             embed.add_field(name="👤", value=interaction.user.mention)
             embed.add_field(name="💸", value=str(amount))
-            embed.set_image(url=self.screenshot.value)
 
-            await channel.send(
-                embed=embed,
-                view=DepositView(interaction.user.id, amount)
-            )
+            if attachment:
+                embed.set_image(url=attachment.url)
 
-            await interaction.response.send_message(
-                "✅ Заявка отправлена",
-                ephemeral=True
-            )
+            await channel.send(embed=embed, view=DepositView(interaction.user.id, amount))
 
-        except Exception as e:
-            await interaction.response.send_message(
-                f"❌ Ошибка: {e}",
-                ephemeral=True
-            )
+        except:
+            await interaction.followup.send("⏳ Время вышло или нет файла", ephemeral=True)
         
 class LoanModal(discord.ui.Modal, title="Взять в долг"):
     amount = discord.ui.TextInput(label="Сумма", required=True)
@@ -617,41 +608,43 @@ class PayDebtModal(discord.ui.Modal, title="Погашение долга"):
 
     async def on_submit(self, interaction: discord.Interaction):
 
-        # 🔒 защита от кривого ввода
         try:
             amount = int(self.amount.value)
         except:
-            await interaction.response.send_message(
-                "❌ Введи корректное число",
-                ephemeral=True
-            )
+            await interaction.response.send_message("❌ Неверная сумма", ephemeral=True)
             return
 
+        # 💡 получаем долг
+        from_db = get_debt(interaction.user.id)
+
+        await interaction.response.send_message(
+            f"💡 Твой текущий долг: {from_db:,}\n"
+            f"💸 Ты указал: {amount:,}\n\n"
+            f"📎 Теперь отправь скриншот (файл или Ctrl+V)",
+            ephemeral=True
+        )
+
+        def check(msg):
+            return msg.author == interaction.user and msg.channel == interaction.channel
+
         try:
+            msg = await interaction.client.wait_for("message", check=check, timeout=60)
+
+            attachment = msg.attachments[0] if msg.attachments else None
+
             channel = await interaction.client.fetch_channel(CHANNEL_REPORT)
 
-            embed = discord.Embed(
-                title="📥 ПОГАШЕНИЕ",
-                color=discord.Color.orange()
-            )
+            embed = discord.Embed(title="📥 ПОГАШЕНИЕ")
             embed.add_field(name="👤", value=interaction.user.mention)
             embed.add_field(name="💰", value=str(amount))
 
-            await channel.send(
-                embed=embed,
-                view=PayDebtView(interaction.user.id, amount)
-            )
+            if attachment:
+                embed.set_image(url=attachment.url)
 
-            await interaction.response.send_message(
-                "✅ Заявка отправлена",
-                ephemeral=True
-            )
+            await channel.send(embed=embed, view=PayDebtView(interaction.user.id, amount))
 
-        except Exception as e:
-            await interaction.response.send_message(
-                f"❌ Ошибка: {e}",
-                ephemeral=True
-            )
+        except:
+            await interaction.followup.send("⏳ Время вышло", ephemeral=True)
         
 # ================= COMMANDS =================
 @bot.tree.command(name="deposit_to_family", description="Добровольный взнос на счет семьи", guild=guild)
