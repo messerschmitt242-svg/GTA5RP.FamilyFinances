@@ -551,7 +551,7 @@ class AmountModal(discord.ui.Modal):
                 await channel.send(embed=embed, view=PayDebtView(uid, amount))
 
         active_uploads[uid] = {
-            "callback": upload_callback
+            "callback": upload_callback,
             "channel_id": interaction.channel.id
         }
 
