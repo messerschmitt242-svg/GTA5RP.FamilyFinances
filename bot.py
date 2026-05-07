@@ -282,13 +282,49 @@ class PassportUI(discord.ui.View):
             FindPassportModal()
         )
 
+async def resolve_member(guild, text):
+
+    text = text.strip()
+
+    # @mention
+    if text.startswith("<@") and text.endswith(">"):
+
+        try:
+            uid = int(
+                text.replace("<@", "")
+                .replace(">", "")
+                .replace("!", "")
+            )
+
+            member = guild.get_member(uid)
+
+            if member:
+                return member
+
+        except:
+            pass
+
+    # display name / username
+    for member in guild.members:
+
+        if (
+            member.display_name.lower()
+            == text.lower()
+        ):
+            return member
+
+        if member.name.lower() == text.lower():
+            return member
+
+    return None
+
 class AddPassportModal(
     discord.ui.Modal,
     title="Добавить паспорт"
 ):
 
     user = discord.ui.TextInput(
-        label="ID пользователя"
+        label="Игрок"
     )
 
     passport = discord.ui.TextInput(
@@ -297,37 +333,37 @@ class AddPassportModal(
 
     async def on_submit(self, i):
 
-        try:
-            uid = int(
-                self.user.value
-                .replace("<@", "")
-                .replace(">", "")
-                .replace("!", "")
-            )
+        member = await resolve_member(
+            i.guild,
+            self.user.value
+        )
 
-        except:
+        if not member:
+
             return await i.response.send_message(
-                "❌ Неверный пользователь",
+                "❌ Игрок не найден",
                 ephemeral=True
             )
+
+        passport = self.passport.value.strip()
 
         if (
-            not self.passport.value.isdigit()
-            or len(self.passport.value) != 6
+            not passport.isdigit()
+            or len(passport) != 6
         ):
             return await i.response.send_message(
-                "❌ Паспорт должен быть 6 цифр",
+                "❌ Паспорт должен быть из 6 цифр",
                 ephemeral=True
             )
 
-        add_passport(uid, self.passport.value)
+        add_passport(member.id, passport)
 
         await i.response.send_message(
             embed=discord.Embed(
                 title="✅ ПАСПОРТ ДОБАВЛЕН",
                 description=(
-                    f"👤 <@{uid}>\n"
-                    f"🪪 #{self.passport.value}"
+                    f"👤 {member.mention}\n"
+                    f"🪪 #{passport}"
                 ),
                 color=discord.Color.green()
             ),
@@ -340,26 +376,24 @@ class FindPassportModal(
 ):
 
     user = discord.ui.TextInput(
-        label="ID пользователя"
+        label="Игрок"
     )
 
     async def on_submit(self, i):
 
-        try:
-            uid = int(
-                self.user.value
-                .replace("<@", "")
-                .replace(">", "")
-                .replace("!", "")
-            )
+        member = await resolve_member(
+            i.guild,
+            self.user.value
+        )
 
-        except:
+        if not member:
+
             return await i.response.send_message(
-                "❌ Неверный пользователь",
+                "❌ Игрок не найден",
                 ephemeral=True
             )
 
-        passport = get_passport(uid)
+        passport = get_passport(member.id)
 
         if not passport:
 
@@ -372,7 +406,7 @@ class FindPassportModal(
             embed=discord.Embed(
                 title="🪪 ПАСПОРТ ГРАЖДАНИНА",
                 description=(
-                    f"👤 <@{uid}>\n"
+                    f"👤 {member.mention}\n"
                     f"🪪 #{passport}"
                 ),
                 color=discord.Color.blurple()
@@ -386,35 +420,46 @@ class DeletePassportModal(
 ):
 
     user = discord.ui.TextInput(
-        label="ID пользователя"
+        label="Игрок"
     )
 
     async def on_submit(self, i):
 
-        try:
-            uid = int(
-                self.user.value
-                .replace("<@", "")
-                .replace(">", "")
-                .replace("!", "")
+        member = await resolve_member(
+            i.guild,
+            self.user.value
+        )
+
+        if not member:
+
+            return await i.response.send_message(
+                "❌ Игрок не найден",
+                ephemeral=True
             )
 
-        except:
+        passport = get_passport(member.id)
+
+        if not passport:
+
             return await i.response.send_message(
-                "❌ Неверный пользователь",
+                "❌ Паспорт не найден",
                 ephemeral=True
             )
 
         await i.response.send_message(
             embed=discord.Embed(
                 title="⚠️ ПОДТВЕРЖДЕНИЕ",
-                description=f"Удалить паспорт <@{uid}>?",
+                description=(
+                    f"👤 {member.mention}\n"
+                    f"🪪 #{passport}\n\n"
+                    "Удалить паспорт?"
+                ),
                 color=discord.Color.orange()
             ),
-            view=DeletePassportConfirm(uid),
+            view=DeletePassportConfirm(member.id),
             ephemeral=True
         )
-
+        
 class DeletePassportConfirm(discord.ui.View):
 
     def __init__(self, uid):
@@ -431,7 +476,7 @@ class DeletePassportConfirm(discord.ui.View):
 
         await i.response.edit_message(
             embed=discord.Embed(
-                title="🗑️ УДАЛЕНО",
+                title="🗑️ ПАСПОРТ УДАЛЁН",
                 description=f"<@{self.uid}>",
                 color=discord.Color.red()
             ),
@@ -446,7 +491,7 @@ class DeletePassportConfirm(discord.ui.View):
 
         await i.response.edit_message(
             embed=discord.Embed(
-                title="❌ ОТМЕНЕНО",
+                title="❌ УДАЛЕНИЕ ОТМЕНЕНО",
                 color=discord.Color.dark_gray()
             ),
             view=None
