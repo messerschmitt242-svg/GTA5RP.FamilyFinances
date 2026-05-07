@@ -22,7 +22,8 @@ if not TOKEN:
     raise RuntimeError("TOKEN не найден!")
 
 # ================= DATABASE =================
-conn = sqlite3.connect("family.db")
+conn = sqlite3.connect("/data/family.db")
+conn.execute("PRAGMA journal_mode=WAL;")
 cursor = conn.cursor()
 
 cursor.execute("""
@@ -79,12 +80,24 @@ def add_debt(user_id, amount):
     conn.commit()
 
 def reduce_debt(user_id, amount):
-    new = max(0, get_debt(user_id) - amount)
-    cursor.execute("""
-    INSERT INTO debts (user_id, amount)
-    VALUES (?, ?)
-    ON CONFLICT(user_id) DO UPDATE SET amount=excluded.amount
-    """, (str(user_id), new))
+
+    current = get_debt(user_id)
+    new = max(0, current - amount)
+
+    # если долг погашен полностью
+    if new == 0:
+        cursor.execute(
+            "DELETE FROM debts WHERE user_id=?",
+            (str(user_id),)
+        )
+
+    else:
+        cursor.execute("""
+        INSERT INTO debts (user_id, amount)
+        VALUES (?, ?)
+        ON CONFLICT(user_id) DO UPDATE SET amount=excluded.amount
+        """, (str(user_id), new))
+
     conn.commit()
 
 def get_all_debts():
