@@ -415,6 +415,15 @@ class DepositView(discord.ui.View):
                 ephemeral=True
             )
 
+        user = await bot.fetch_user(self.user_id)
+
+        await admin_log(
+            "Отказано в пополнении",
+            user,
+            self.amount,
+            interaction.user
+        )
+
         await interaction.message.delete()
 
 class LoanView(discord.ui.View):
@@ -478,7 +487,16 @@ class LoanView(discord.ui.View):
                 "❌ Нет доступа",
                 ephemeral=True
             )
+            
+        user = await bot.fetch_user(self.user_id)
 
+        await admin_log(
+            "Отказано в выдаче долга",
+            user,
+            self.amount,
+            interaction.user
+        )
+        
         await interaction.message.delete()
 
 class PayDebtView(discord.ui.View):
@@ -526,6 +544,15 @@ class PayDebtView(discord.ui.View):
             f"📥 ПОГАШЕНИЕ\n"
             f"{user.mention}\n"
             f"💰 {self.amount:,}"
+        )
+
+        user = await bot.fetch_user(self.user_id)
+
+        await admin_log(
+            "Отказано в погашении",
+            user,
+            self.amount,
+            interaction.user
         )
 
         await interaction.message.delete()
@@ -790,7 +817,15 @@ class FamilyMenu(discord.ui.View):
 async def menu(interaction: discord.Interaction):
 
     await interaction.response.send_message(
-        "📊 СЕМЕЙНЫЙ БАНК",
+        "┏━━━━━━━━━━━━━━━━━━━━━━┓\n"
+        "┃      🏦 WAYNE BANK 🏦      ┃\n"
+        "┣━━━━━━━━━━━━━━━━━━━━━━┫\n"
+        "┃  💎 СЕМЕЙНЫЙ БАНК 💎  ┃\n"
+        "┃                      ┃\n"
+        "┃  💰 Взносы           ┃\n"
+        "┃  💸 Долги            ┃\n"
+        "┃  📊 Финансы семьи    ┃\n"
+        "┗━━━━━━━━━━━━━━━━━━━━━━┛",
         view=FamilyMenu()
     )
 
