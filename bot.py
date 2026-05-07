@@ -131,19 +131,19 @@ def bank_embed():
     debts = get_all_debts()
     top = get_top_sponsors()
 
-    top_text = "None"
+    top_text = "Нет данных"
     if top:
-        top_text = f"<@{top[0][0]}> — ${top[0][1]:,}"
+        top_text = f"<@{top[0][0]}> — 💰 ${top[0][1]:,}"
 
     return discord.Embed(
-        title="🏦 LS BANK TERMINAL",
+        title="🏦 БАНКОВСКИЙ ТЕРМИНАЛ ЛОС-САНТОС",
         description=
-        "```css\nLOS SANTOS FINANCIAL SYSTEM\n```\n"
-        f"💰 BALANCE: ${get_balance():,}\n"
-        f"📊 LOANS: {len(debts)}\n"
-        f"🏆 TOP: {top_text}\n\n"
+        "```css\nФИНАНСОВАЯ СИСТЕМА ЛОС-САНТОС\n```\n"
+        f"💰 БАЛАНС СЕМЬИ: ${get_balance():,}\n"
+        f"📊 АКТИВНЫЕ ДОЛГИ: {len(debts)}\n"
+        f"🏆 ТОР СПОНСОР: {top_text}\n\n"
         "────────────────────\n"
-        "Use buttons below",
+        "Выберите действие ниже",
         color=BANK_COLOR
     )
 
