@@ -167,7 +167,14 @@ def add_sponsor(user_id, amount):
         """, (str(user_id), amount))
 
     conn.commit()
-
+    
+def set_sponsor(user_id, amount):
+    cursor.execute(
+        "INSERT OR REPLACE INTO sponsors VALUES (?, ?)",
+        (str(user_id), amount)
+    )
+    conn.commit()
+    
 def get_top_sponsors():
 
     cursor.execute("""
