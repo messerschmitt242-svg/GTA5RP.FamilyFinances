@@ -60,7 +60,37 @@ CREATE TABLE IF NOT EXISTS sponsors (
 cursor.execute("INSERT OR IGNORE INTO family_bank (id, balance) VALUES (1, 0)")
 conn.commit()
 
+cursor.execute("""
+CREATE TABLE IF NOT EXISTS bank_logs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    action TEXT,
+    amount INTEGER,
+    user_id TEXT,
+    time TEXT
+)
+""")
+conn.commit()
+
 # ================= DB FUNCS =================
+def add_log(action, uid, amount):
+    cursor.execute("""
+    INSERT INTO bank_logs (action, user_id, amount, time)
+    VALUES (?, ?, ?, ?)
+    """, (
+        action,
+        str(uid),
+        amount,
+        datetime.now().strftime("%d.%m %H:%M")
+    ))
+    conn.commit()
+
+def fmt(n):
+    if n >= 1_000_000:
+        return f"{n/1_000_000:.1f}M"
+    if n >= 1_000:
+        return f"{n/1_000:.0f}K"
+    return str(n)
+    
 def get_balance():
     cursor.execute("SELECT balance FROM family_bank WHERE id=1")
     return cursor.fetchone()[0]
@@ -137,13 +167,23 @@ def bank_embed():
 
     return discord.Embed(
         title="🏦 БАНКОВСКИЙ ТЕРМИНАЛ WAYNE ENT.",
-        description=
-        "```css\nФИНАНСОВАЯ СИСТЕМА WAYNE ENT.\n```\n"
-        f"💰 БАЛАНС СЕМЬИ: ${get_balance():,}\n"
-        f"📊 АКТИВНЫЕ ДОЛГИ: {len(debts)}\n"
-        f"🏆 ТОР СПОНСОР: {top_text}\n\n"
-        "────────────────────\n"
-        "Выберите действие ниже",
+        description=(
+            "```css\nФИНАНСОВАЯ СИСТЕМА WAYNE ENT.\n```\n\n"
+
+            "💰 **БАЛАНС СЕМЬИ:** "
+            f"${get_balance():,}\n"
+            "────────────────────────────\n\n"
+
+            "📊 **АКТИВНЫЕ ДОЛГИ:** "
+            f"{len(debts)}\n"
+            "────────────────────────────\n\n"
+
+            "🏆 **ТОП СПОНСОР:** "
+            f"{top_text}\n"
+            "────────────────────────────\n\n"
+
+            "⚙️ *Выберите действие ниже*"
+        ),
         color=BANK_COLOR
     )
 
@@ -190,6 +230,63 @@ class BankUI(discord.ui.View):
                 description=desc,
                 color=BANK_COLOR
             ),
+            ephemeral=True
+        )
+    @discord.ui.button(label="📜 Логи", style=discord.ButtonStyle.gray)
+    async def logs(self, i, b):
+
+        cursor.execute("""
+        SELECT action, amount, user_id, time
+        FROM bank_logs
+        ORDER BY id DESC
+        LIMIT 10
+        """)
+
+        data = cursor.fetchall()
+
+        desc = "\n".join([
+            f"[{t}] {a} | <@{u}> | ${v:,}"
+            for a,v,u,t in data
+        ]) or "Нет логов"
+
+        await i.response.send_message(
+            embed=discord.Embed(
+                title="📜 БАНКОВСКИЕ ЛОГИ",
+                description=desc,
+                color=BANK_COLOR
+            ),
+            ephemeral=True
+        )
+
+    @discord.ui.button(label="📈 График", style=discord.ButtonStyle.blurple)
+    async def graph(self, i, b):
+        import matplotlib.pyplot as plt
+        import io
+
+        cursor.execute("""
+        SELECT balance, rowid FROM family_bank
+        ORDER BY rowid DESC LIMIT 7
+        """)
+
+        data = cursor.fetchall()[::-1]
+
+        if not data:
+            return await i.response.send_message("Нет данных", ephemeral=True)
+
+        values = [x[0] for x in data]
+        labels = list(range(len(values)))
+
+        plt.figure()
+        plt.plot(labels, values)
+
+        plt.title("BANK BALANCE 7D")
+
+        buf = io.BytesIO()
+        plt.savefig(buf, format="png")
+        buf.seek(0)
+
+        await i.response.send_message(
+            file=discord.File(buf, "graph.png"),
             ephemeral=True
         )
 # ================= DASHBOARD =================
@@ -257,6 +354,8 @@ class DepositView(discord.ui.View):
         add_balance(self.amount)
         add_sponsor(self.uid, self.amount)
 
+        add_log("DEPOSIT", self.uid, self.amount)
+        
         await update_bank()
         await i.message.delete()
 
@@ -265,12 +364,14 @@ class LoanView(discord.ui.View):
         super().__init__()
         self.uid = uid
         self.amount = amount
-
+        
     @discord.ui.button(label="✔", style=discord.ButtonStyle.green)
     async def ok(self, i, b):
         subtract_balance(self.amount)
         add_debt(self.uid, self.amount)
 
+        add_log("LOAN", self.uid, self.amount)
+        
         await update_bank()
         await i.message.delete()
 
@@ -287,6 +388,8 @@ class PayDebtView(discord.ui.View):
 
         reduce_debt(self.uid, paid)
         add_balance(paid)
+
+        add_log("REPAY", self.uid, paid)
 
         await update_bank()
         await i.message.delete()
@@ -345,6 +448,23 @@ class PayDebtModal(discord.ui.Modal, title="Repay"):
         await i.response.send_message("Send screenshot", ephemeral=True)
 
 # ================= READY =================
+@bot.command()
+async def setbank(ctx, amount: int):
+
+    if ctx.channel.id != CHANNEL_REPORT:
+        return
+
+    set_balance(amount)
+
+    await update_bank()
+
+    await ctx.send(
+        embed=discord.Embed(
+            title="🏦 BANK OVERRIDE",
+            description=f"Баланс установлен: ${amount:,}",
+            color=BANK_COLOR
+        )
+    )
 @bot.event
 async def on_ready():
     await bot.tree.sync(guild=guild)
