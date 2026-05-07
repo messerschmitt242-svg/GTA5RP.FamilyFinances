@@ -339,9 +339,10 @@ class MemberSelect(discord.ui.UserSelect):
         super().__init__(
             placeholder="Выберите игрока...",
             min_values=1,
-            max_values=1
+            max_values=1,
+            custom_id="passport_member_select"
         )
-
+        
     async def callback(self, interaction):
 
         member = self.values[0]
@@ -354,7 +355,7 @@ class MemberSelect(discord.ui.UserSelect):
 class AddPassportView(discord.ui.View):
 
     def __init__(self):
-        super().__init__(timeout=60)
+        super().__init__(timeout=None)
 
         self.add_item(MemberSelect())
 
@@ -859,6 +860,8 @@ async def setbank(ctx, amount: int):
 @bot.event
 async def on_ready():
     bot.add_view(PassportUI())
+    bot.add_view(AddPassportView())
+    
     await bot.tree.sync(guild=guild)
     print("BANK ONLINE")
     await update_bank()
