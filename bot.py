@@ -493,7 +493,7 @@ class FamilyMenu(discord.ui.View):
 
     @discord.ui.button(label="📥 Погасить долг", style=discord.ButtonStyle.gray)
     async def repay(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await interaction.response.send_modal(PayModal())
+        await interaction.response.send_modal(PayDebtModal())
 
     @discord.ui.button(label="📊 Список долгов", style=discord.ButtonStyle.secondary)
     async def debts(self, interaction: discord.Interaction, button: discord.ui.Button):
@@ -510,29 +510,58 @@ class FamilyMenu(discord.ui.View):
         await interaction.response.send_message(text, ephemeral=True)
 # ================= MODALS ===================
 class DepositModal(discord.ui.Modal, title="Добровольный взнос"):
-    amount = discord.ui.TextInput(label="Сумма")
+    amount = discord.ui.TextInput(label="Сумма", required=True)
+    screenshot = discord.ui.TextInput(label="Скриншот URL", required=True)
 
     async def on_submit(self, interaction: discord.Interaction):
-        await interaction.response.send_message(
-            f"Заявка на взнос: {self.amount.value}",
-            ephemeral=True
+        channel = await interaction.client.fetch_channel(CHANNEL_REPORT)
+
+        embed = discord.Embed(
+            title="💰 ЗАЯВКА НА ПОПОЛНЕНИЕ",
+            color=discord.Color.green()
         )
+        embed.add_field(name="👤", value=interaction.user.mention)
+        embed.add_field(name="💸", value=self.amount.value)
+        embed.set_image(url=self.screenshot.value)
+
+        await channel.send(embed=embed, view=DepositView(interaction.user.id, int(self.amount.value)))
+
+        await interaction.response.send_message("Заявка отправлена", ephemeral=True)
+        
 class LoanModal(discord.ui.Modal, title="Взять в долг"):
-    amount = discord.ui.TextInput(label="Сумма")
+    amount = discord.ui.TextInput(label="Сумма", required=True)
 
     async def on_submit(self, interaction: discord.Interaction):
-        await interaction.response.send_message(
-            f"Заявка на долг: {self.amount.value}",
-            ephemeral=True
+        channel = await interaction.client.fetch_channel(CHANNEL_REPORT)
+
+        embed = discord.Embed(
+            title="💸 ЗАЯВКА НА ДОЛГ",
+            color=discord.Color.blue()
         )
-class PayModal(discord.ui.Modal, title="Погашение долга"):
-    amount = discord.ui.TextInput(label="Сумма")
+        embed.add_field(name="👤", value=interaction.user.mention)
+        embed.add_field(name="💰", value=self.amount.value)
+
+        await channel.send(embed=embed, view=LoanView(interaction.user.id, int(self.amount.value)))
+
+        await interaction.response.send_message("Заявка отправлена", ephemeral=True)
+        
+class PayDebtModal(discord.ui.Modal, title="Погашение долга"):
+    amount = discord.ui.TextInput(label="Сумма", required=True)
 
     async def on_submit(self, interaction: discord.Interaction):
-        await interaction.response.send_message(
-            f"Заявка на погашение: {self.amount.value}",
-            ephemeral=True
+        channel = await interaction.client.fetch_channel(CHANNEL_REPORT)
+
+        embed = discord.Embed(
+            title="📥 ПОГАШЕНИЕ",
+            color=discord.Color.orange()
         )
+        embed.add_field(name="👤", value=interaction.user.mention)
+        embed.add_field(name="💰", value=self.amount.value)
+
+        await channel.send(embed=embed, view=PayDebtView(interaction.user.id, int(self.amount.value)))
+
+        await interaction.response.send_message("Заявка отправлена", ephemeral=True)
+        
 # ================= COMMANDS =================
 @bot.tree.command(name="deposit_to_family", description="Добровольный взнос на счет семьи", guild=guild)
 async def deposit(interaction: discord.Interaction, amount: int, screenshot: discord.Attachment):
