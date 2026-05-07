@@ -197,12 +197,14 @@ async def update_top_sponsors():
 @bot.event
 async def on_ready():
     await bot.tree.sync(guild=guild)
-    print(f"BOT ONLINE: {bot.user}")
-
-    await update_balance_message()
-    await update_top_sponsors()
 
     channel = await bot.fetch_channel(CHANNEL_REQUEST)
+
+    messages = [msg async for msg in channel.history(limit=5)]
+
+    for msg in messages:
+        if msg.author == bot.user:
+            return  # уже есть меню → не спамим
 
     await channel.send(
         "📊 СЕМЕЙНЫЙ БАНК",
