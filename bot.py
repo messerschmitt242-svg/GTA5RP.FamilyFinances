@@ -19,18 +19,20 @@ CHANNEL_REQUEST = 1501385708366205028
 CHANNEL_REPORT = 1501351092125040710
 CHANNEL_APPROVE = 1448688906299113684
 
+# ================= COLORS =================
+BANK_COLOR = discord.Color.gold()
+SUCCESS_COLOR = discord.Color.green()
+ERROR_COLOR = discord.Color.red()
+INFO_COLOR = discord.Color.blurple()
+ADMIN_COLOR = discord.Color.dark_gray()
+
 # ================= BOT =================
 intents = discord.Intents.default()
-
 intents.message_content = True
 intents.messages = True
 intents.guild_messages = True
 
-bot = commands.Bot(
-    command_prefix="!",
-    intents=intents
-)
-
+bot = commands.Bot(command_prefix="!", intents=intents)
 guild = discord.Object(id=GUILD_ID)
 
 active_uploads = {}
@@ -38,7 +40,6 @@ active_uploads = {}
 # ================= DATABASE =================
 conn = sqlite3.connect("/data/family.db")
 conn.execute("PRAGMA journal_mode=WAL;")
-
 cursor = conn.cursor()
 
 cursor.execute("""
@@ -62,11 +63,7 @@ CREATE TABLE IF NOT EXISTS sponsors (
 )
 """)
 
-cursor.execute("""
-INSERT OR IGNORE INTO family_bank (id, balance)
-VALUES (1, 0)
-""")
-
+cursor.execute("INSERT OR IGNORE INTO family_bank (id, balance) VALUES (1, 0)")
 conn.commit()
 
 # ================= DB =================
@@ -75,10 +72,7 @@ def get_balance():
     return cursor.fetchone()[0]
 
 def set_balance(amount):
-    cursor.execute(
-        "UPDATE family_bank SET balance=? WHERE id=1",
-        (amount,)
-    )
+    cursor.execute("UPDATE family_bank SET balance=? WHERE id=1", (amount,))
     conn.commit()
 
 def add_balance(amount):
@@ -88,820 +82,207 @@ def subtract_balance(amount):
     set_balance(max(0, get_balance() - amount))
 
 def get_debt(user_id):
-
-    cursor.execute(
-        "SELECT amount FROM debts WHERE user_id=?",
-        (str(user_id),)
-    )
-
+    cursor.execute("SELECT amount FROM debts WHERE user_id=?", (str(user_id),))
     row = cursor.fetchone()
-
     return row[0] if row else 0
 
 def add_debt(user_id, amount):
-
     total = get_debt(user_id) + amount
-
     cursor.execute("""
     INSERT INTO debts (user_id, amount)
     VALUES (?, ?)
-    ON CONFLICT(user_id)
-    DO UPDATE SET amount=excluded.amount
+    ON CONFLICT(user_id) DO UPDATE SET amount=excluded.amount
     """, (str(user_id), total))
-
     conn.commit()
 
 def reduce_debt(user_id, amount):
-
     current = get_debt(user_id)
-
     new = max(0, current - amount)
 
     if new == 0:
-
-        cursor.execute(
-            "DELETE FROM debts WHERE user_id=?",
-            (str(user_id),)
-        )
-
+        cursor.execute("DELETE FROM debts WHERE user_id=?", (str(user_id),))
     else:
-
         cursor.execute("""
         INSERT INTO debts (user_id, amount)
         VALUES (?, ?)
-        ON CONFLICT(user_id)
-        DO UPDATE SET amount=excluded.amount
+        ON CONFLICT(user_id) DO UPDATE SET amount=excluded.amount
         """, (str(user_id), new))
 
     conn.commit()
 
 def get_all_debts():
-
-    cursor.execute(
-        "SELECT user_id, amount FROM debts"
-    )
-
+    cursor.execute("SELECT user_id, amount FROM debts")
     return cursor.fetchall()
 
 def add_sponsor(user_id, amount):
-
-    cursor.execute(
-        "SELECT amount FROM sponsors WHERE user_id=?",
-        (str(user_id),)
-    )
-
+    cursor.execute("SELECT amount FROM sponsors WHERE user_id=?", (str(user_id),))
     row = cursor.fetchone()
 
     if row:
-
-        cursor.execute("""
-        UPDATE sponsors
-        SET amount=amount+?
-        WHERE user_id=?
-        """, (amount, str(user_id)))
-
+        cursor.execute("UPDATE sponsors SET amount=amount+? WHERE user_id=?", (amount, str(user_id)))
     else:
-
-        cursor.execute("""
-        INSERT INTO sponsors VALUES (?, ?)
-        """, (str(user_id), amount))
+        cursor.execute("INSERT INTO sponsors VALUES (?, ?)", (str(user_id), amount))
 
     conn.commit()
-    
-def set_sponsor(user_id, amount):
-    cursor.execute(
-        "INSERT OR REPLACE INTO sponsors VALUES (?, ?)",
-        (str(user_id), amount)
-    )
-    conn.commit()
-    
+
 def get_top_sponsors():
-
-    cursor.execute("""
-    SELECT user_id, amount
-    FROM sponsors
-    ORDER BY amount DESC
-    """)
-
+    cursor.execute("SELECT user_id, amount FROM sponsors ORDER BY amount DESC")
     return cursor.fetchall()
+
+def set_sponsor(user_id, amount):
+    cursor.execute("INSERT OR REPLACE INTO sponsors VALUES (?, ?)", (str(user_id), amount))
+    conn.commit()
+
+# ================= EMBED HELPER =================
+def bank_embed(title, desc, color):
+    embed = discord.Embed(
+        title=title,
+        description=desc,
+        color=color,
+        timestamp=datetime.now()
+    )
+    embed.set_footer(text="🏦 Wayne Family Bank")
+    return embed
 
 # ================= HELPERS =================
 def is_head(member: discord.Member):
+    return any(role.id == HEAD_ROLE_ID for role in member.roles)
 
-    return any(
-        role.id == HEAD_ROLE_ID
-        for role in member.roles
-    )
-
+# ================= BALANCE =================
 async def update_balance_message():
+    channel = await bot.fetch_channel(CHANNEL_FAMILY_BALANCE)
 
-    channel = await bot.fetch_channel(
-        CHANNEL_FAMILY_BALANCE
+    embed = bank_embed(
+        "💰 БАЛАНС СЕМЬИ",
+        f"💵 {get_balance():,}",
+        BANK_COLOR
     )
 
-    text = (
-        "💰 БАЛАНС СЕМЬИ\n"
-        "──────────────\n"
-        f"{get_balance():,}"
-    )
-
-    messages = [
-        msg async for msg
-        in channel.history(limit=10)
-    ]
-
-    for msg in messages:
-
+    async for msg in channel.history(limit=10):
         if msg.author == bot.user:
-
-            await msg.edit(content=text)
+            await msg.edit(embed=embed)
             return
 
-    msg = await channel.send(text)
-
+    msg = await channel.send(embed=embed)
     await msg.pin()
 
-async def update_top_sponsors():
-
-    channel = await bot.fetch_channel(
-        CHANNEL_TOP_SPONSORS
-    )
-
-    data = get_top_sponsors()
-
-    if not data:
-
-        text = "🏆 ТОП СПОНСОРОВ ПУСТ"
-
-    else:
-
-        text = (
-            "🏆 ТОП СПОНСОРОВ\n"
-            "──────────────\n"
-        )
-
-        for i, (uid, amount) in enumerate(data, 1):
-
-            text += f"{i}. <@{uid}> — {amount:,}\n"
-
-    messages = [
-        msg async for msg
-        in channel.history(limit=10)
-    ]
-
-    for msg in messages:
-
-        if msg.author == bot.user:
-
-            await msg.edit(content=text)
-            return
-
-    await channel.send(text)
-    
+# ================= TOP SPONSORS =================
 async def refresh_top_message():
     channel = await bot.fetch_channel(CHANNEL_TOP_SPONSORS)
-
     data = get_top_sponsors()
 
     if not data:
-        text = "🏆 ТОП СПОНСОРОВ ПУСТ"
+        embed = bank_embed("🏆 ТОП СПОНСОРОВ", "Пока пусто", INFO_COLOR)
     else:
-        text = "🏆 ТОП СПОНСОРОВ\n──────────────\n"
+        desc = ""
         for i, (uid, amount) in enumerate(data, 1):
-            text += f"{i}. <@{uid}> — {amount:,}\n"
+            desc += f"**{i}.** <@{uid}> — 💰 {amount:,}\n"
 
-    messages = [msg async for msg in channel.history(limit=10)]
+        embed = bank_embed("🏆 ТОП СПОНСОРОВ", desc, BANK_COLOR)
 
-    for msg in messages:
+    async for msg in channel.history(limit=10):
         if msg.author == bot.user:
-            await msg.edit(content=text)
+            await msg.edit(embed=embed)
             return
 
-    msg = await channel.send(text)
+    msg = await channel.send(embed=embed)
     await msg.pin()
-    
-async def admin_log(action, user, amount, admin):
 
-    channel = await bot.fetch_channel(
-        CHANNEL_REPORT
-    )
+# ================= ADMIN LOG =================
+async def admin_log(action, user, amount, admin):
+    channel = await bot.fetch_channel(CHANNEL_REPORT)
 
     embed = discord.Embed(
-        title="🛠️ ДЕЙСТВИЕ АДМИНИСТРАЦИИ",
-        color=discord.Color.dark_gray()
+        title="🛠️ АДМИН ДЕЙСТВИЕ",
+        color=ADMIN_COLOR,
+        timestamp=datetime.now()
     )
 
-    embed.add_field(
-        name="📌 Действие",
-        value=action,
-        inline=False
-    )
-
-    embed.add_field(
-        name="👤 Пользователь",
-        value=user.mention,
-        inline=False
-    )
-
-    embed.add_field(
-        name="💰 Сумма",
-        value=f"{amount:,}",
-        inline=False
-    )
-
-    embed.add_field(
-        name="🛡️ Администратор",
-        value=admin.mention,
-        inline=False
-    )
-
-    embed.timestamp = datetime.now()
+    embed.add_field(name="Действие", value=action, inline=False)
+    embed.add_field(name="Пользователь", value=user.mention, inline=False)
+    embed.add_field(name="Сумма", value=f"{amount:,}", inline=False)
+    embed.add_field(name="Админ", value=admin.mention, inline=False)
 
     await channel.send(embed=embed)
-
-# ================= EVENTS =================
-@bot.event
-async def on_ready():
-
-    bot.add_view(FamilyMenu())
-
-    await bot.tree.sync(guild=guild)
-
-    print("BOT ONLINE")
-
-    channel = await bot.fetch_channel(
-        CHANNEL_REQUEST
-    )
-
-    messages = [
-        msg async for msg
-        in channel.history(limit=10)
-    ]
-
-    for msg in messages:
-
-        if (
-            msg.author == bot.user
-            and "СЕМЕЙНЫЙ БАНК" in msg.content
-        ):
-            return
-
-    menu = await channel.send(
-        "📊 СЕМЕЙНЫЙ БАНК",
-        view=FamilyMenu()
-    )
-
-    await menu.pin()
-
-@bot.event
-async def on_message(message: discord.Message):
-
-    await bot.process_commands(message)
-
-    if message.author.bot:
-        return
-
-    uid = message.author.id
-
-    if uid not in active_uploads:
-        return
-
-    state = active_uploads[uid]
-
-    if message.channel.id != state["channel_id"]:
-        return
-
-    image_url = None
-
-    # 1. обычный файл (самый надёжный источник)
-    if message.attachments:
-        image_url = message.attachments[0].url
-
-    # 2. ссылка в тексте
-    elif message.content and message.content.startswith("http"):
-        image_url = message.content
-
-    # 3. embed (fallback)
-    elif message.embeds:
-        for embed in message.embeds:
-            if embed.image:
-                image_url = embed.image.url
-                break
-            if embed.thumbnail:
-                image_url = embed.thumbnail.url
-                break
-
-    if not image_url:
-        await message.channel.send(
-            f"{message.author.mention} ❌ Картинка не обнаружена",
-            delete_after=5
-        )
-        return
-        
-    try:
-        await state["callback"](message, image_url)
-    except Exception as e:
-        print("UPLOAD CALLBACK ERROR:", e)
-        return  # если не отправилось — не удаляем сообщение
-
-    # удаляем ТОЛЬКО после успешной отправки в CHANNEL_REPORT
-    try:
-        await message.delete()
-    except:
-        pass
-
-    if uid in active_uploads:
-
-        del active_uploads[uid]
-
-# ================= APPROVE VIEWS =================
-class DepositView(discord.ui.View):
-
-    def __init__(self, user_id, amount):
-
-        super().__init__(timeout=None)
-
-        self.user_id = user_id
-        self.amount = amount
-
-    @discord.ui.button(
-        label="✅ Одобрить",
-        style=discord.ButtonStyle.green
-    )
-    async def approve(self, interaction, button):
-
-        await interaction.response.defer()
-        
-        if not is_head(interaction.user):
-
-            return await interaction.response.send_message(
-                "❌ Нет доступа",
-                ephemeral=True
-            )
-
-        add_balance(self.amount)
-
-        add_sponsor(self.user_id, self.amount)
-
-        channel = await bot.fetch_channel(CHANNEL_DEPOSITS_LOG)
-
-        await channel.send(
-            f"💰 ПОПОЛНЕНИЕ СЕМЬИ\n"
-            f"👤 Пользователь: <@{self.user_id}>\n"
-            f"💸 Сумма: {self.amount:,}\n"
-            f"🛡️ Одобрил: {interaction.user.mention}"
-        )
-
-        await update_balance_message()
-        await update_top_sponsors()
-
-        user = await bot.fetch_user(self.user_id)
-
-        await admin_log(
-            "Одобрено пополнение",
-            user,
-            self.amount,
-            interaction.user
-        )
-
-        await interaction.message.delete()
-
-        await refresh_top_message()
-
-    @discord.ui.button(
-        label="❌ Отказать",
-        style=discord.ButtonStyle.red
-    )
-    async def reject(self, interaction, button):
-
-        if not is_head(interaction.user):
-
-            return await interaction.response.send_message(
-                "❌ Нет доступа",
-                ephemeral=True
-            )
-
-        user = await bot.fetch_user(self.user_id)
-
-        await admin_log(
-            "Отказано в пополнении",
-            user,
-            self.amount,
-            interaction.user
-        )
-
-        await interaction.message.delete()
-
-class LoanView(discord.ui.View):
-
-    def __init__(self, user_id, amount):
-
-        super().__init__(timeout=None)
-
-        self.user_id = user_id
-        self.amount = amount
-
-    @discord.ui.button(
-        label="✅ Одобрить",
-        style=discord.ButtonStyle.green
-    )
-    async def approve(self, interaction, button):
-
-        await interaction.response.defer()
-        
-        if not is_head(interaction.user):
-
-            return await interaction.response.send_message(
-                "❌ Нет доступа",
-                ephemeral=True
-            )
-
-        subtract_balance(self.amount)
-
-        add_debt(self.user_id, self.amount)
-
-        await update_balance_message()
-
-        user = await bot.fetch_user(self.user_id)
-
-        await admin_log(
-            "Одобрена выдача долга",
-            user,
-            self.amount,
-            interaction.user
-        )
-
-        channel = await bot.fetch_channel(CHANNEL_APPROVE)
-
-        await channel.send(
-            f"💸 ВЫДАН ДОЛГ\n"
-            f"👤 Пользователь: <@{self.user_id}>\n"
-            f"💰 Сумма: {self.amount:,}\n"
-            f"🛡️ Одобрил: {interaction.user.mention}"
-        )
-
-        await interaction.message.delete()
-
-    @discord.ui.button(
-        label="❌ Отказать",
-        style=discord.ButtonStyle.red
-    )
-    async def reject(self, interaction, button):
-
-        if not is_head(interaction.user):
-
-            return await interaction.response.send_message(
-                "❌ Нет доступа",
-                ephemeral=True
-            )
-            
-        user = await bot.fetch_user(self.user_id)
-
-        await admin_log(
-            "Отказано в выдаче долга",
-            user,
-            self.amount,
-            interaction.user
-        )
-        
-        await interaction.message.delete()
-
-class PayDebtView(discord.ui.View):
-
-    def __init__(self, user_id, amount):
-
-        super().__init__(timeout=None)
-
-        self.user_id = user_id
-        self.amount = amount
-
-    @discord.ui.button(
-        label="✅ Одобрить",
-        style=discord.ButtonStyle.green
-    )
-    async def approve(self, interaction, button):
-
-        await interaction.response.defer()
-        
-        if not is_head(interaction.user):
-
-            return await interaction.response.send_message(
-                "❌ Нет доступа",
-                ephemeral=True
-            )
-
-        current_debt = get_debt(self.user_id)
-
-        paid = min(self.amount, current_debt)
-        remaining = current_debt - paid
-
-        reduce_debt(self.user_id, paid)
-        add_balance(paid)
-
-        await update_balance_message()
-
-        user = await bot.fetch_user(self.user_id)
-
-        await admin_log(
-            "Одобрено погашение",
-            user,
-            self.amount,
-            interaction.user
-        )
-
-        channel = await bot.fetch_channel(
-            CHANNEL_APPROVE
-        )
-
-        await channel.send(
-            f"📥 ПОГАШЕНИЕ ДОЛГА\n"
-            f"👤 Пользователь: <@{self.user_id}>\n"
-            f"💰 Внесено: {paid:,}\n"
-            f"📉 Остаток долга: {remaining:,}\n"
-            f"🛡️ Одобрил: {interaction.user.mention}"
-        )
-
-        user = await bot.fetch_user(self.user_id)
-
-        await admin_log(
-            "Отказано в погашении",
-            user,
-            self.amount,
-            interaction.user
-        )
-
-        await interaction.message.delete()
-
-    @discord.ui.button(
-        label="❌ Отказать",
-        style=discord.ButtonStyle.red
-    )
-    async def reject(self, interaction, button):
-
-        if not is_head(interaction.user):
-
-            return await interaction.response.send_message(
-                "❌ Нет доступа",
-                ephemeral=True
-            )
-
-        await interaction.message.delete()
-
-# ================= MODALS =================
-class DepositModal(discord.ui.Modal, title="Добровольный взнос"):
-
-    amount = discord.ui.TextInput(
-        label="Сумма"
-    )
-
-    async def on_submit(self, interaction):
-
-        try:
-            amount = int(self.amount.value)
-
-        except:
-
-            return await interaction.response.send_message(
-                "❌ Неверная сумма",
-                ephemeral=True
-            )
-
-        uid = interaction.user.id
-
-        async def callback(message, image_url):
-
-            channel = await bot.fetch_channel(
-                CHANNEL_REPORT
-            )
-
-            embed = discord.Embed(
-                title="💰 ЗАЯВКА НА ПОПОЛНЕНИЕ",
-                color=discord.Color.green()
-            )
-
-            embed.add_field(
-                name="👤",
-                value=interaction.user.mention
-            )
-
-            embed.add_field(
-                name="💸",
-                value=f"{amount:,}"
-            )
-
-            embed.set_image(url=image_url)
-
-            await channel.send(
-                embed=embed,
-                view=DepositView(uid, amount)
-            )
-
-        active_uploads[uid] = {
-            "callback": callback,
-            "channel_id": interaction.channel.id
-        }
-
-        await interaction.response.send_message(
-            "📎 Отправь картинку",
-            ephemeral=True
-        )
-
-class LoanModal(discord.ui.Modal, title="Взять в долг"):
-
-    amount = discord.ui.TextInput(
-        label="Сумма"
-    )
-
-    async def on_submit(self, interaction):
-
-        try:
-            amount = int(self.amount.value)
-
-        except:
-
-            return await interaction.response.send_message(
-                "❌ Неверная сумма",
-                ephemeral=True
-            )
-
-        channel = await bot.fetch_channel(
-            CHANNEL_REPORT
-        )
-
-        embed = discord.Embed(
-            title="💸 ЗАЯВКА НА ДОЛГ",
-            color=discord.Color.blue()
-        )
-
-        embed.add_field(
-            name="👤",
-            value=interaction.user.mention
-        )
-
-        embed.add_field(
-            name="💰",
-            value=f"{amount:,}"
-        )
-
-        await channel.send(
-            embed=embed,
-            view=LoanView(interaction.user.id, amount)
-        )
-
-        await interaction.response.send_message(
-            "✅ Заявка отправлена",
-            ephemeral=True
-        )
-
-class PayDebtModal(discord.ui.Modal, title="Погашение долга"):
-
-    amount = discord.ui.TextInput(
-        label="Сумма"
-    )
-
-    async def on_submit(self, interaction):
-
-        try:
-            amount = int(self.amount.value)
-
-        except:
-
-            return await interaction.response.send_message(
-                "❌ Неверная сумма",
-                ephemeral=True
-            )
-
-        debt = get_debt(interaction.user.id)
-
-        uid = interaction.user.id
-
-        async def callback(message, image_url):
-
-            channel = await bot.fetch_channel(CHANNEL_REPORT)
-
-            embed = discord.Embed(title="📥 ПОГАШЕНИЕ", сolor=discord.Color.orange())
-
-            embed.add_field(name="👤", value=interaction.user.mention)
-            embed.add_field(name="💰", value=f"{amount:,}")
-            embed.set_image(url=image_url)
-
-            await channel.send(embed=embed, view=PayDebtView(uid, amount))
-
-        active_uploads[uid] = {
-            "callback": callback,
-            "channel_id": interaction.channel.id
-        }
-
-        await interaction.response.send_message(
-            f"📊 Текущий долг: {debt:,}\n"
-            f"📎 Отправь скриншот оплаты",
-            ephemeral=True
-        )
 
 # ================= MENU =================
 class FamilyMenu(discord.ui.View):
 
     def __init__(self):
-
         super().__init__(timeout=None)
 
-    @discord.ui.button(
-        label="💰 Добровольный взнос",
-        style=discord.ButtonStyle.green,
-        custom_id="family_deposit"
-    )
+    @discord.ui.button(label="💰 Взнос", style=discord.ButtonStyle.green)
     async def deposit(self, interaction, button):
+        await interaction.response.send_modal(DepositModal())
 
-        await interaction.response.send_modal(
-            DepositModal()
-        )
-
-    @discord.ui.button(
-        label="💸 Взять в долг",
-        style=discord.ButtonStyle.blurple,
-        custom_id="family_loan"
-    )
+    @discord.ui.button(label="💸 Долг", style=discord.ButtonStyle.blurple)
     async def loan(self, interaction, button):
+        await interaction.response.send_modal(LoanModal())
 
-        await interaction.response.send_modal(
-            LoanModal()
-        )
-
-    @discord.ui.button(
-        label="📥 Погасить долг",
-        style=discord.ButtonStyle.gray,
-        custom_id="family_repay"
-    )
+    @discord.ui.button(label="📥 Погашение", style=discord.ButtonStyle.gray)
     async def repay(self, interaction, button):
+        await interaction.response.send_modal(PayDebtModal())
 
-        await interaction.response.send_modal(
-            PayDebtModal()
-        )
-
-    @discord.ui.button(
-        label="📊 Список долгов",
-        style=discord.ButtonStyle.secondary,
-        custom_id="family_list"
-    )
-    async def debt_list(self, interaction, button):
+    @discord.ui.button(label="📊 Долги", style=discord.ButtonStyle.secondary)
+    async def list(self, interaction, button):
 
         data = get_all_debts()
 
         if not data:
+            embed = bank_embed("📊 ДОЛГИ", "Нет долгов", INFO_COLOR)
+            return await interaction.response.send_message(embed=embed, ephemeral=True)
 
-            return await interaction.response.send_message(
-                "Нет долгов",
-                ephemeral=True
-            )
-
-        text = (
-            "📊 ДОЛГИ\n"
-            "──────────────\n"
-        )
-
+        desc = ""
         for uid, amount in data:
+            desc += f"<@{uid}> — {amount:,}\n"
 
-            text += f"<@{uid}> — {amount:,}\n"
+        embed = bank_embed("📊 ДОЛГИ", desc, BANK_COLOR)
 
+        await interaction.response.send_message(embed=embed, ephemeral=True)
+
+# ================= MODALS =================
+class DepositModal(discord.ui.Modal, title="Взнос"):
+    amount = discord.ui.TextInput(label="Сумма")
+
+    async def on_submit(self, interaction):
+        amount = int(self.amount.value)
         await interaction.response.send_message(
-            text,
+            embed=bank_embed("📎 Отправь скрин", "Загрузи файл или ссылку", INFO_COLOR),
             ephemeral=True
         )
 
-# ================= COMMAND =================
-@bot.tree.command(
-    name="menu",
-    description="Открыть меню",
-    guild=guild
-)
+class LoanModal(discord.ui.Modal, title="Долг"):
+    amount = discord.ui.TextInput(label="Сумма")
+
+    async def on_submit(self, interaction):
+        embed = bank_embed("💸 Заявка", f"{interaction.user.mention} запросил {self.amount.value}", INFO_COLOR)
+        await interaction.response.send_message(embed=embed, ephemeral=True)
+
+class PayDebtModal(discord.ui.Modal, title="Погашение"):
+    amount = discord.ui.TextInput(label="Сумма")
+
+    async def on_submit(self, interaction):
+        debt = get_debt(interaction.user.id)
+
+        embed = bank_embed(
+            "📥 ПОГАШЕНИЕ",
+            f"Долг: {debt:,}\nВнести: {self.amount.value}",
+            SUCCESS_COLOR
+        )
+
+        await interaction.response.send_message(embed=embed, ephemeral=True)
+
+# ================= MENU COMMAND =================
+@bot.tree.command(name="menu", guild=guild)
 async def menu(interaction: discord.Interaction):
 
-    await interaction.response.send_message(
-        "╔══════════════════════╗\n"
-        "║      🏦 WAYNE BANK 🏦      ║\n"
-        "╠══════════════════════╣\n"
-        "║   💰 СЕМЕЙНЫЙ ФОНД 💰   ║\n"
-        "╚══════════════════════╝",
-        view=FamilyMenu()
+    embed = bank_embed(
+        "🏦 WAYNE BANK",
+        "Добро пожаловать в семейный банк",
+        BANK_COLOR
     )
-@bot.tree.command(
-    name="edit_sponsor",
-    description="Добавить старого спонсора",
-    guild=guild
-)
-async def edit_sponsor(
-    interaction: discord.Interaction,
-    user: discord.Member,
-    amount: int
-):
 
-    set_sponsor(user.id, amount)
+    await interaction.response.send_message(embed=embed, view=FamilyMenu())
 
-    await refresh_top_message()
-
-    await interaction.response.send_message(
-        f"✅ Добавлено: {user.mention} — {amount:,}",
-        ephemeral=True
-    )
 # ================= RUN =================
 bot.run(TOKEN)
