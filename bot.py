@@ -492,36 +492,34 @@ class FamilyMenu(discord.ui.View):
     def __init__(self):
         super().__init__(timeout=None)
 
-    @discord.ui.button(
-        label="💰 Добровольный взнос",
-        style=discord.ButtonStyle.green,
-        custom_id="family:deposit"
-    )
+    @discord.ui.button(label="💰 Добровольный взнос", style=discord.ButtonStyle.green, custom_id="dep")
     async def deposit(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await interaction.response.send_modal(DepositModal())
+        await interaction.response.send_message(
+            "💰 Введи сумму взноса:",
+            view=DepositFlowView(interaction.user.id),
+            ephemeral=True
+        )
 
-    @discord.ui.button(
-        label="💸 Взять в долг",
-        style=discord.ButtonStyle.blurple,
-        custom_id="family:loan"
-    )
+    @discord.ui.button(label="💸 Взять в долг", style=discord.ButtonStyle.blurple, custom_id="loan")
     async def loan(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await interaction.response.send_modal(LoanModal())
+        await interaction.response.send_message(
+            "💸 Введи сумму долга:",
+            view=LoanFlowView(interaction.user.id),
+            ephemeral=True
+        )
 
-    @discord.ui.button(
-        label="📥 Погасить долг",
-        style=discord.ButtonStyle.gray,
-        custom_id="family:repay"
-    )
+    @discord.ui.button(label="📥 Погасить долг", style=discord.ButtonStyle.gray, custom_id="repay")
     async def repay(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await interaction.response.send_modal(PayDebtModal())
+        debt = get_debt(interaction.user.id)
 
-    @discord.ui.button(
-        label="📊 Список долгов",
-        style=discord.ButtonStyle.secondary,
-        custom_id="family:debts"
-    )
-    async def debts(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.send_message(
+            f"📊 Твой долг: {debt:,}\nВведите сумму:",
+            view=RepayFlowView(interaction.user.id, debt),
+            ephemeral=True
+        )
+
+    @discord.ui.button(label="📊 Список долгов", style=discord.ButtonStyle.secondary, custom_id="list")
+    async def list(self, interaction: discord.Interaction, button: discord.ui.Button):
 
         data = get_all_debts()
 
@@ -710,7 +708,117 @@ class PayDebtModal(discord.ui.Modal, title="Погашение долга"):
 
         except:
             await interaction.followup.send("⏳ Время вышло", ephemeral=True)
-        
+class DepositFlowView(discord.ui.View):
+    def __init__(self, user_id):
+        super().__init__(timeout=60)
+        self.user_id = user_id
+        self.amount = None
+
+    @discord.ui.button(label="➡️ Подтвердить сумму", style=discord.ButtonStyle.green)
+    async def step1(self, interaction: discord.Interaction, button: discord.ui.Button):
+
+        await interaction.response.send_message(
+            "📎 Теперь отправь файл (Ctrl+V или загрузка)",
+            ephemeral=True
+        )
+
+        def check(msg):
+            return msg.author.id == self.user_id and msg.channel.id == interaction.channel.id
+
+        try:
+            msg = await interaction.client.wait_for("message", check=check, timeout=120)
+
+            if not msg.attachments:
+                await interaction.followup.send("❌ Нет файла", ephemeral=True)
+                return
+
+            file = msg.attachments[0]
+
+            channel = await interaction.client.fetch_channel(CHANNEL_REPORT)
+
+            embed = discord.Embed(title="💰 ВЗНОС")
+            embed.add_field(name="👤", value=interaction.user.mention)
+            embed.set_image(url=file.url)
+
+            await channel.send(embed=embed)
+
+            await msg.delete()
+
+        except:
+            await interaction.followup.send("⏳ Время вышло", ephemeral=True)
+
+class LoanFlowView(discord.ui.View):
+    def __init__(self, user_id):
+        super().__init__(timeout=60)
+        self.user_id = user_id
+
+    @discord.ui.button(label="➡️ Подтвердить", style=discord.ButtonStyle.blurple)
+    async def go(self, interaction: discord.Interaction, button: discord.ui.Button):
+
+        await interaction.response.send_message(
+            "📎 Отправь скриншот",
+            ephemeral=True
+        )
+
+        def check(msg):
+            return msg.author.id == self.user_id and msg.channel.id == interaction.channel.id
+
+        try:
+            msg = await interaction.client.wait_for("message", timeout=120, check=check)
+
+            file = msg.attachments[0] if msg.attachments else None
+
+            channel = await interaction.client.fetch_channel(CHANNEL_REPORT)
+
+            embed = discord.Embed(title="💸 ДОЛГ")
+            embed.add_field(name="👤", value=interaction.user.mention)
+
+            if file:
+                embed.set_image(url=file.url)
+
+            await channel.send(embed=embed)
+
+            await msg.delete()
+
+        except:
+            await interaction.followup.send("⏳ Время вышло", ephemeral=True)
+
+class RepayFlowView(discord.ui.View):
+    def __init__(self, user_id, debt):
+        super().__init__(timeout=60)
+        self.user_id = user_id
+        self.debt = debt
+
+    @discord.ui.button(label="➡️ Подтвердить", style=discord.ButtonStyle.gray)
+    async def go(self, interaction: discord.Interaction, button: discord.ui.Button):
+
+        await interaction.response.send_message(
+            f"📊 Долг: {self.debt:,}\n📎 Отправь скрин оплаты",
+            ephemeral=True
+        )
+
+        def check(msg):
+            return msg.author.id == self.user_id and msg.channel.id == interaction.channel.id
+
+        try:
+            msg = await interaction.client.wait_for("message", timeout=120, check=check)
+
+            file = msg.attachments[0] if msg.attachments else None
+
+            channel = await interaction.client.fetch_channel(CHANNEL_REPORT)
+
+            embed = discord.Embed(title="📥 ПОГАШЕНИЕ")
+            embed.add_field(name="👤", value=interaction.user.mention)
+
+            if file:
+                embed.set_image(url=file.url)
+
+            await channel.send(embed=embed)
+
+            await msg.delete()
+
+        except:
+            await interaction.followup.send("⏳ Время вышло", ephemeral=True)
 # ================= COMMANDS =================
 @bot.tree.command(name="deposit_to_family", description="Добровольный взнос на счет семьи", guild=guild)
 async def deposit(interaction: discord.Interaction, amount: int, screenshot: discord.Attachment):
