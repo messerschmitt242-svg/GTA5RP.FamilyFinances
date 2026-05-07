@@ -548,15 +548,12 @@ class DepositModal(discord.ui.Modal, title="Добровольный взнос"
             return
 
         await interaction.response.send_message(
-            "📎 Отправь картинку следующим сообщением (можно просто файл или Ctrl+V)",
+            "📎 Отправь картинку (файл или Ctrl+V)",
             ephemeral=True
         )
 
         def check(msg: discord.Message):
-            return (
-                msg.author.id == interaction.user.id and
-                msg.channel.id == interaction.channel.id
-            )
+            return msg.author.id == interaction.user.id
 
         try:
             msg = await interaction.client.wait_for(
@@ -565,12 +562,26 @@ class DepositModal(discord.ui.Modal, title="Добровольный взнос"
                 timeout=60
             )
 
-            # 🔥 ВАЖНО: ждём именно attachment (а не текст)
-            if not msg.attachments:
-                await interaction.followup.send("❌ Ты не отправил файл", ephemeral=True)
-                return
+            # 🔥 ЛОГИКА ПОИСКА АТТАЧА (ВАЖНО)
+            attachment = None
 
-            attachment = msg.attachments[0]
+            if msg.attachments and len(msg.attachments) > 0:
+                attachment = msg.attachments[0]
+
+            # 🔥 если Discord не положил attachments — fallback через embeds
+            elif msg.embeds:
+                # иногда картинки приходят как embed image
+                embed = msg.embeds[0]
+                if embed.image and embed.image.url:
+                    attachment_url = embed.image.url
+                else:
+                    attachment_url = None
+            else:
+                attachment_url = None
+
+            if not attachment:
+                await interaction.followup.send("❌ Не найден файл. Попробуй отправить именно как файл (не текст)", ephemeral=True)
+                return
 
             channel = await interaction.client.fetch_channel(CHANNEL_REPORT)
 
