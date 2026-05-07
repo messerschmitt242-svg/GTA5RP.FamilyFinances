@@ -136,9 +136,9 @@ def bank_embed():
         top_text = f"<@{top[0][0]}> — 💰 ${top[0][1]:,}"
 
     return discord.Embed(
-        title="🏦 БАНКОВСКИЙ ТЕРМИНАЛ ЛОС-САНТОС",
+        title="🏦 БАНКОВСКИЙ ТЕРМИНАЛ WAYNE ENT.",
         description=
-        "```css\nФИНАНСОВАЯ СИСТЕМА ЛОС-САНТОС\n```\n"
+        "```css\nФИНАНСОВАЯ СИСТЕМА WAYNE ENT.\n```\n"
         f"💰 БАЛАНС СЕМЬИ: ${get_balance():,}\n"
         f"📊 АКТИВНЫЕ ДОЛГИ: {len(debts)}\n"
         f"🏆 ТОР СПОНСОР: {top_text}\n\n"
