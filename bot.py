@@ -197,6 +197,7 @@ async def update_top_sponsors():
 # ================= READY =================
 @bot.event
 async def on_ready():
+    bot.add_view(FamilyMenu())  # 💣 ВАЖНО
     await bot.tree.sync(guild=guild)
 
     channel = await bot.fetch_channel(CHANNEL_REQUEST)
@@ -486,15 +487,24 @@ class FamilyMenu(discord.ui.View):
 
     @discord.ui.button(label="💰 Добровольный взнос", style=discord.ButtonStyle.green)
     async def deposit(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await interaction.response.send_modal(DepositModal())
+        try:
+            await interaction.response.send_modal(DepositModal())
+        except Exception as e:
+            await interaction.response.send_message(f"❌ Ошибка: {e}", ephemeral=True)
 
     @discord.ui.button(label="💸 Взять в долг", style=discord.ButtonStyle.blurple)
     async def loan(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await interaction.response.send_modal(LoanModal())
+        try:
+            await interaction.response.send_modal(LoanModal())
+        except Exception as e:
+            await interaction.response.send_message(f"❌ Ошибка: {e}", ephemeral=True)
 
     @discord.ui.button(label="📥 Погасить долг", style=discord.ButtonStyle.gray)
     async def repay(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await interaction.response.send_modal(PayDebtModal())
+        try:
+            await interaction.response.send_modal(PayDebtModal())
+        except Exception as e:
+            await interaction.response.send_message(f"❌ Ошибка: {e}", ephemeral=True)
 
     @discord.ui.button(label="📊 Список долгов", style=discord.ButtonStyle.secondary)
     async def debts(self, interaction: discord.Interaction, button: discord.ui.Button):
@@ -516,8 +526,23 @@ class DepositModal(discord.ui.Modal, title="Добровольный взнос"
 
     async def on_submit(self, interaction: discord.Interaction):
 
-        # 🔥 СНАЧАЛА отвечаем (обязательно)
-        await interaction.response.defer(ephemeral=True)
+        # 🔒 проверка суммы
+        try:
+            amount = int(self.amount.value)
+        except:
+            await interaction.response.send_message(
+                "❌ Введи корректное число",
+                ephemeral=True
+            )
+            return
+
+        # 🔒 проверка URL (очень простая защита)
+        if not self.screenshot.value.startswith("http"):
+            await interaction.response.send_message(
+                "❌ Введи корректный URL скриншота",
+                ephemeral=True
+            )
+            return
 
         try:
             channel = await interaction.client.fetch_channel(CHANNEL_REPORT)
@@ -527,25 +552,39 @@ class DepositModal(discord.ui.Modal, title="Добровольный взнос"
                 color=discord.Color.green()
             )
             embed.add_field(name="👤", value=interaction.user.mention)
-            embed.add_field(name="💸", value=self.amount.value)
+            embed.add_field(name="💸", value=str(amount))
             embed.set_image(url=self.screenshot.value)
 
             await channel.send(
                 embed=embed,
-                view=DepositView(interaction.user.id, int(self.amount.value))
+                view=DepositView(interaction.user.id, amount)
             )
 
-            await interaction.followup.send("✅ Заявка отправлена", ephemeral=True)
+            await interaction.response.send_message(
+                "✅ Заявка отправлена",
+                ephemeral=True
+            )
 
         except Exception as e:
-            await interaction.followup.send(f"❌ Ошибка: {e}", ephemeral=True)
+            await interaction.response.send_message(
+                f"❌ Ошибка: {e}",
+                ephemeral=True
+            )
         
 class LoanModal(discord.ui.Modal, title="Взять в долг"):
     amount = discord.ui.TextInput(label="Сумма", required=True)
 
     async def on_submit(self, interaction: discord.Interaction):
 
-        await interaction.response.defer(ephemeral=True)
+        try:
+            amount = int(self.amount.value)
+
+        except:
+            await interaction.response.send_message(
+                "❌ Введи корректное число",
+                ephemeral=True
+            )
+            return
 
         try:
             channel = await interaction.client.fetch_channel(CHANNEL_REPORT)
@@ -555,24 +594,38 @@ class LoanModal(discord.ui.Modal, title="Взять в долг"):
                 color=discord.Color.blue()
             )
             embed.add_field(name="👤", value=interaction.user.mention)
-            embed.add_field(name="💰", value=self.amount.value)
+            embed.add_field(name="💰", value=str(amount))
 
             await channel.send(
                 embed=embed,
-                view=LoanView(interaction.user.id, int(self.amount.value))
+                view=LoanView(interaction.user.id, amount)
             )
 
-            await interaction.followup.send("✅ Заявка отправлена", ephemeral=True)
+            await interaction.response.send_message(
+                "✅ Заявка отправлена",
+                ephemeral=True
+            )
 
         except Exception as e:
-            await interaction.followup.send(f"❌ Ошибка: {e}", ephemeral=True)
+            await interaction.response.send_message(
+                f"❌ Ошибка: {e}",
+                ephemeral=True
+            )
         
 class PayDebtModal(discord.ui.Modal, title="Погашение долга"):
     amount = discord.ui.TextInput(label="Сумма", required=True)
 
     async def on_submit(self, interaction: discord.Interaction):
 
-        await interaction.response.defer(ephemeral=True)
+        # 🔒 защита от кривого ввода
+        try:
+            amount = int(self.amount.value)
+        except:
+            await interaction.response.send_message(
+                "❌ Введи корректное число",
+                ephemeral=True
+            )
+            return
 
         try:
             channel = await interaction.client.fetch_channel(CHANNEL_REPORT)
@@ -582,17 +635,23 @@ class PayDebtModal(discord.ui.Modal, title="Погашение долга"):
                 color=discord.Color.orange()
             )
             embed.add_field(name="👤", value=interaction.user.mention)
-            embed.add_field(name="💰", value=self.amount.value)
+            embed.add_field(name="💰", value=str(amount))
 
             await channel.send(
                 embed=embed,
-                view=PayDebtView(interaction.user.id, int(self.amount.value))
+                view=PayDebtView(interaction.user.id, amount)
             )
 
-            await interaction.followup.send("✅ Заявка отправлена", ephemeral=True)
+            await interaction.response.send_message(
+                "✅ Заявка отправлена",
+                ephemeral=True
+            )
 
         except Exception as e:
-            await interaction.followup.send(f"❌ Ошибка: {e}", ephemeral=True)
+            await interaction.response.send_message(
+                f"❌ Ошибка: {e}",
+                ephemeral=True
+            )
         
 # ================= COMMANDS =================
 @bot.tree.command(name="deposit_to_family", description="Добровольный взнос на счет семьи", guild=guild)
