@@ -983,12 +983,17 @@ class DepositModal(discord.ui.Modal, title="Deposit"):
             )
 
             if file:
-                embed.set_image(url=f"attachment://{file.filename}")
+                embed.set_image(
+                    url=f"attachment://{file.filename}"
+                )
 
             await ch.send(
                 embed=embed,
                 file=file,
-                view=DepositView(uid, int(self.amount.value))
+                view=DepositView(
+                    uid,
+                    int(self.amount.value)
+                )
             )
 
         active_uploads[uid] = {"callback": cb, "channel_id": i.channel.id}
@@ -1024,7 +1029,7 @@ class PayDebtModal(discord.ui.Modal, title="Repay"):
         file = None
 
         if msg.attachments:
-        file = await msg.attachments[0].to_file()
+            file = await msg.attachments[0].to_file()
 
         embed = discord.Embed(
             title="📥 REPAY",
@@ -1033,12 +1038,17 @@ class PayDebtModal(discord.ui.Modal, title="Repay"):
         )
 
         if file:
-            embed.set_image(url=f"attachment://{file.filename}")
+            embed.set_image(
+                url=f"attachment://{file.filename}"
+            )
 
         await ch.send(
             embed=embed,
             file=file,
-            view=PayDebtView(uid, int(self.amount.value))
+            view=PayDebtView(
+                uid,
+                int(self.amount.value)
+            )
         )
         
         active_uploads[uid] = {"callback": cb, "channel_id": i.channel.id}
