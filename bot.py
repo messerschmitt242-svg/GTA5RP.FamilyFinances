@@ -83,6 +83,15 @@ CREATE TABLE IF NOT EXISTS passports (
 """)
 conn.commit()
 
+try:
+    cursor.execute("""
+    ALTER TABLE passports
+    ADD COLUMN phone TEXT
+    """)
+    conn.commit()
+except:
+    pass
+
 # ================= DB FUNCS =================
 def add_passport(uid, passport):
 
@@ -120,6 +129,31 @@ def get_passport(uid):
     row = cursor.fetchone()
 
     return row[0] if row else None
+
+def set_phone(uid, phone):
+
+    cursor.execute("""
+    UPDATE passports
+    SET phone=?
+    WHERE user_id=?
+    """, (phone, str(uid)))
+
+    conn.commit()
+
+
+def get_phone(uid):
+
+    cursor.execute("""
+    SELECT phone FROM passports
+    WHERE user_id=?
+    """, (str(uid),))
+
+    row = cursor.fetchone()
+
+    if not row:
+        return None
+
+    return row[0]
 
 def passport_embed():
 
@@ -295,6 +329,21 @@ class PassportUI(discord.ui.View):
         )
 
     @discord.ui.button(
+        label="📱 Телефон",
+        style=discord.ButtonStyle.gray,
+        custom_id="passport_phone"
+    )
+    async def phone_btn(
+        self,
+        interaction: discord.Interaction,
+        button: discord.ui.Button
+    ):
+
+        await interaction.response.send_modal(
+            AddPhoneModal()
+        )
+    
+    @discord.ui.button(
         label="🔍 Найти",
         style=discord.ButtonStyle.blurple,
         custom_id="passport_find"
@@ -339,10 +388,25 @@ class PassportUI(discord.ui.View):
 
         members.sort(key=lambda x: x[0].lower())
 
-        desc = "\n".join([
-            f"👤 {name} | {mention} — 🪪 #{passport}"
-            for name, mention, passport in members
-        ])
+        rows = []
+
+        for uid, passport in data:
+
+            member = interaction.guild.get_member(
+                int(uid)
+            )
+
+            if not member:
+                continue
+
+            phone = get_phone(uid)
+
+            rows.append(
+                f"👤 {member.display_name}\n"
+                f"🪪 {passport} | 📱 {phone if phone else '—'}"
+            )
+
+        desc = "\n\n".join(rows) or "Пусто"
 
         embed = discord.Embed(
             title="📋 ПАСПОРТНЫЙ РЕЕСТР",
@@ -455,7 +519,68 @@ class AddPassportModal(
             ),
             ephemeral=True
         )
-        
+
+class AddPhoneModal(
+    discord.ui.Modal,
+    title="Добавить телефон"
+):
+
+    user = discord.ui.TextInput(
+        label="Игрок"
+    )
+
+    phone = discord.ui.TextInput(
+        label="Номер телефона"
+    )
+
+    async def on_submit(self, i):
+
+        member = await resolve_member(
+            i.guild,
+            self.user.value
+        )
+
+        if not member:
+
+            return await i.response.send_message(
+                "❌ Игрок не найден",
+                ephemeral=True
+            )
+
+        passport = get_passport(member.id)
+
+        if not passport:
+
+            return await i.response.send_message(
+                "❌ Сначала добавьте паспорт",
+                ephemeral=True
+            )
+
+        phone = self.phone.value.strip()
+
+        if (
+            not phone.isdigit()
+            or len(phone) != 5
+        ):
+            return await i.response.send_message(
+                "❌ Телефон должен быть 5-значным",
+                ephemeral=True
+            )
+
+        set_phone(member.id, phone)
+
+        await i.response.send_message(
+            embed=discord.Embed(
+                title="📱 ТЕЛЕФОН ДОБАВЛЕН",
+                description=(
+                    f"👤 {member.mention}\n"
+                    f"📱 #{phone}"
+                ),
+                color=discord.Color.green()
+            ),
+            ephemeral=True
+        )
+
 class FindPassportModal(
     discord.ui.Modal,
     title="Найти паспорт"
@@ -480,6 +605,7 @@ class FindPassportModal(
             )
 
         passport = get_passport(member.id)
+        phone = get_phone(member.id)
 
         if not passport:
 
@@ -494,6 +620,7 @@ class FindPassportModal(
                 description=(
                     f"👤 {member.mention}\n"
                     f"🪪 #{passport}"
+                    f"📱 {phone if phone else 'Не указан'}"
                 ),
                 color=discord.Color.blurple()
             ),
