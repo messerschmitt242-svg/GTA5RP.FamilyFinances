@@ -403,7 +403,7 @@ class PassportUI(discord.ui.View):
 
             rows.append(
                 f"👤 {member.display_name}\n"
-                f"🪪 {passport} | 📱 {phone if phone else '—'}"
+                f"🪪 {passport} | ☎️  {phone if phone else '—'}"
             )
 
         desc = "\n\n".join(rows) or "Пусто"
@@ -574,7 +574,7 @@ class AddPhoneModal(
                 title="📱 ТЕЛЕФОН ДОБАВЛЕН",
                 description=(
                     f"👤 {member.mention}\n"
-                    f"📱 #{phone}"
+                    f"☎️ #{phone}"
                 ),
                 color=discord.Color.green()
             ),
@@ -620,7 +620,7 @@ class FindPassportModal(
                 description=(
                     f"👤 {member.mention}\n"
                     f"🪪 #{passport}"
-                    f"📱 {phone if phone else 'Не указан'}"
+                    f"☎️ {phone if phone else 'Не указан'}"
                 ),
                 color=discord.Color.blurple()
             ),
