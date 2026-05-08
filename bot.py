@@ -1,9 +1,10 @@
 import discord
-from discord.ext import commands
+from discord.ext import commands, tasks
 from discord import app_commands
 from datetime import datetime
 import sqlite3
 import os
+import asyncio
 
 # ================= CONFIG =================
 TOKEN = os.getenv("TOKEN")
@@ -698,6 +699,94 @@ async def update_bank():
     await msg.pin()
     BANK_MESSAGE_ID = msg.id
 
+# ================= PASSPORT TERMINAL =================
+PASSPORT_MESSAGE_ID = None
+
+async def update_passport_terminal():
+
+    global PASSPORT_MESSAGE_ID
+
+    ch = await bot.fetch_channel(PASSPORT_CHANNEL)
+
+    embed = passport_embed()
+
+    # пытаемся обновить существующий терминал
+    if PASSPORT_MESSAGE_ID:
+
+        try:
+            msg = await ch.fetch_message(
+                PASSPORT_MESSAGE_ID
+            )
+
+            await msg.edit(
+                embed=embed,
+                view=PassportUI()
+            )
+
+            return
+
+        except:
+            PASSPORT_MESSAGE_ID = None
+
+    # ищем терминал среди последних сообщений
+    async for m in ch.history(limit=20):
+
+        if (
+            m.author == bot.user
+            and m.embeds
+            and "ГОСУДАРСТВЕННЫЙ РЕЕСТР"
+            in m.embeds[0].title
+        ):
+
+            PASSPORT_MESSAGE_ID = m.id
+
+            try:
+                await m.edit(
+                    embed=embed,
+                    view=PassportUI()
+                )
+
+                return
+
+            except:
+                pass
+
+    # если терминала нет — создаем заново
+    msg = await ch.send(
+        embed=embed,
+        view=PassportUI()
+    )
+
+    await msg.pin()
+
+    PASSPORT_MESSAGE_ID = msg.id
+
+# ================= AUTO TERMINAL CHECK =================
+@tasks.loop(seconds=30)
+async def terminal_guard():
+
+    global BANK_MESSAGE_ID
+
+    try:
+        ch = await bot.fetch_channel(CHANNEL_REQUEST)
+
+        # если ID нет — создать заново
+        if not BANK_MESSAGE_ID:
+            await update_bank()
+            return
+
+        try:
+            await ch.fetch_message(BANK_MESSAGE_ID)
+
+        except:
+
+            # сообщение удалили -> создать новое
+            BANK_MESSAGE_ID = None
+            await update_bank()
+
+    except Exception as e:
+        print("TERMINAL GUARD ERROR:", e)
+        
 # ================= CALLBACK UPLOAD =================
 @bot.event
 async def on_message(msg):
@@ -726,9 +815,38 @@ async def on_message(msg):
     if not img:
         return
 
-    await state["callback"](msg, img)
+    loading = await msg.channel.send(
+        "📤 Обрабатываем изображение...\n"
+        "⏳ Подождите 10 секунд"
+    )
 
-    await msg.delete()
+    await asyncio.sleep(10)
+
+    try:
+        await state["callback"](msg, img)
+
+        await loading.edit(
+            content="✅ Скриншот успешно загружен"
+        )
+
+    except Exception as e:
+
+        await loading.edit(
+            content=f"❌ Ошибка загрузки: {e}"
+        )
+
+    await asyncio.sleep(3)
+
+    try:
+        await loading.delete()
+    except:
+        pass
+
+    try:
+        await msg.delete()
+    except:
+        pass
+
     del active_uploads[uid]
 
 # ================= VIEWS (APPROVALS) =================
@@ -912,37 +1030,26 @@ async def on_ready():
     
     await bot.tree.sync(guild=guild)
     print("BANK ONLINE")
+    
     await update_bank()
+    await update_passport_terminal()
 
-    passport_channel = await bot.fetch_channel(
-        1447305826644525136
-    )
+    if not terminal_guard.is_running():
+        terminal_guard.start()
 
-    msgs = [
-        m async for m
-        in passport_channel.history(limit=10)
-    ]
+# ================= AUTO RESTORE TERMINALS =================
+@tasks.loop(seconds=30)
+async def terminal_guard():
 
-    exists = False
+    try:
+        await update_bank()
+    except:
+        pass
 
-    for m in msgs:
-
-        if (
-            m.author == bot.user
-            and m.embeds
-            and "ГОСУДАРСТВЕННЫЙ РЕЕСТР"
-            in m.embeds[0].title
-        ):
-            exists = True
-
-    if not exists:
-
-        msg = await passport_channel.send(
-            embed=passport_embed(),
-            view=PassportUI()
-        )
-
-        await msg.pin()
-
+    try:
+        await update_passport_terminal()
+    except:
+        pass
+        
 # ================= RUN =================
 bot.run(TOKEN)
