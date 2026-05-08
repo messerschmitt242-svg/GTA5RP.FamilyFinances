@@ -560,10 +560,10 @@ class AddPhoneModal(
 
         if (
             not phone.isdigit()
-            or len(phone) != 5
+            or len(phone) != 7
         ):
             return await i.response.send_message(
-                "❌ Телефон должен быть 5-значным",
+                "❌ Телефон должен быть 7-значным",
                 ephemeral=True
             )
 
