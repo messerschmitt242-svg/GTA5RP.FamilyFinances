@@ -223,16 +223,22 @@ def get_top_sponsors():
 # ================= UI =================
 def bank_embed():
     debts = get_all_debts()
-    top = get_top_sponsors()
+    top = get_top_sponsors()[:3]
 
-    top_text = "Нет данных"
     if top:
-        top_text = f"<@{top[0][0]}> — 💰 ${top[0][1]:,}"
+        top_text = "\n".join([
+            f"{idx+1}. <@{uid}> — 💰 ${amount:,}"
+            for idx, (uid, amount) in enumerate(top)
+        ])
+    else:
+        top_text = "Нет данных"
 
     return discord.Embed(
         title="🏦 БАНКОВСКИЙ ТЕРМИНАЛ WAYNE INC.",
         description=(
-            "```css\nФИНАНСОВАЯ СИСТЕМА WAYNE INC.\n```\n\n"
+            "```css\n"
+            "ФИНАНСОВАЯ СИСТЕМА WAYNE INC.\n"
+            "```\n\n"
 
             "💰 **БАЛАНС СЕМЬИ:** "
             f"${get_balance():,}\n"
@@ -242,7 +248,7 @@ def bank_embed():
             f"{len(debts)}\n"
             "────────────────────────────\n\n"
 
-            "🏆 **ТОП СПОНСОР:** "
+            "🏆 **ТОП-3 СПОНСОРОВ:**\n"
             f"{top_text}\n"
             "────────────────────────────\n\n"
 
@@ -960,13 +966,30 @@ class DepositModal(discord.ui.Modal, title="Deposit"):
         uid = i.user.id
 
         async def cb(msg, img):
+
+            await asyncio.sleep(10)
+
             ch = await bot.fetch_channel(CHANNEL_REPORT)
 
-            await ch.send(embed=discord.Embed(
+            file = None
+
+            if msg.attachments:
+                file = await msg.attachments[0].to_file()
+
+            embed = discord.Embed(
                 title="💰 DEPOSIT",
                 description=f"<@{uid}> {self.amount.value}",
                 color=BANK_COLOR
-            ).set_image(url=img), view=DepositView(uid, int(self.amount.value)))
+            )
+
+            if file:
+                embed.set_image(url=f"attachment://{file.filename}")
+
+            await ch.send(
+                embed=embed,
+                file=file,
+                view=DepositView(uid, int(self.amount.value))
+            )
 
         active_uploads[uid] = {"callback": cb, "channel_id": i.channel.id}
 
@@ -992,15 +1015,32 @@ class PayDebtModal(discord.ui.Modal, title="Repay"):
     async def on_submit(self, i):
         uid = i.user.id
 
-        async def cb(msg, img):
-            ch = await bot.fetch_channel(CHANNEL_REPORT)
+    async def cb(msg, img):
 
-            await ch.send(embed=discord.Embed(
-                title="📥 REPAY",
-                description=f"<@{uid}> {self.amount.value}",
-                color=BANK_COLOR
-            ).set_image(url=img), view=PayDebtView(uid, int(self.amount.value)))
+        await asyncio.sleep(10)
 
+        ch = await bot.fetch_channel(CHANNEL_REPORT)
+
+        file = None
+
+        if msg.attachments:
+        file = await msg.attachments[0].to_file()
+
+        embed = discord.Embed(
+            title="📥 REPAY",
+            description=f"<@{uid}> {self.amount.value}",
+            color=BANK_COLOR
+        )
+
+        if file:
+            embed.set_image(url=f"attachment://{file.filename}")
+
+        await ch.send(
+            embed=embed,
+            file=file,
+            view=PayDebtView(uid, int(self.amount.value))
+        )
+        
         active_uploads[uid] = {"callback": cb, "channel_id": i.channel.id}
 
         await i.response.send_message("Send screenshot", ephemeral=True)
