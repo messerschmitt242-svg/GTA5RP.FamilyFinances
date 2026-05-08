@@ -829,7 +829,16 @@ async def update_bank():
             pass
 
     msg = await ch.send(embed=embed, view=BankUI())
-    await msg.pin()
+
+    try:
+        if not msg.pinned:
+            try:
+                await msg.pin()
+            except:
+                pass
+    except:
+        pass
+
     BANK_MESSAGE_ID = msg.id
 
 # ================= PASSPORT TERMINAL =================
@@ -890,7 +899,14 @@ async def update_passport_terminal():
         view=PassportUI()
     )
 
-    await msg.pin()
+    try:
+        if not msg.pinned:
+            try:
+                await msg.pin()
+            except:
+                pass
+    except:
+        pass
 
     PASSPORT_MESSAGE_ID = msg.id
 
