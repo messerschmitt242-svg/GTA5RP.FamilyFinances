@@ -1158,45 +1158,60 @@ class LoanModal(discord.ui.Modal, title="Loan"):
         await i.response.send_message("Sent", ephemeral=True)
 
 class PayDebtModal(discord.ui.Modal, title="Repay"):
+
     amount = discord.ui.TextInput(label="Amount")
 
     async def on_submit(self, i):
+
         uid = i.user.id
 
-    async def cb(msg, img):
+        async def cb(msg, img):
 
-        await asyncio.sleep(10)
+            await asyncio.sleep(10)
 
-        ch = await bot.fetch_channel(CHANNEL_REPORT)
-
-        file = None
-
-        if msg.attachments:
-            file = await msg.attachments[0].to_file()
-
-        embed = discord.Embed(
-            title="📥 REPAY",
-            description=f"<@{uid}> {self.amount.value}",
-            color=BANK_COLOR
-        )
-
-        if file:
-            embed.set_image(
-                url=f"attachment://{file.filename}"
+            ch = await bot.fetch_channel(
+                CHANNEL_REPORT
             )
 
-        await ch.send(
-            embed=embed,
-            file=file,
-            view=PayDebtView(
-                uid,
-                int(self.amount.value)
-            )
-        )
-        
-        active_uploads[uid] = {"callback": cb, "channel_id": i.channel.id}
+            file = None
 
-        await i.response.send_message("Send screenshot", ephemeral=True)
+            if msg.attachments:
+
+                file = await msg.attachments[0].to_file()
+
+            embed = discord.Embed(
+                title="📥 REPAY",
+                description=(
+                    f"<@{uid}> "
+                    f"{self.amount.value}"
+                ),
+                color=BANK_COLOR
+            )
+
+            if file:
+
+                embed.set_image(
+                    url=f"attachment://{file.filename}"
+                )
+
+            await ch.send(
+                embed=embed,
+                file=file,
+                view=PayDebtView(
+                    uid,
+                    int(self.amount.value)
+                )
+            )
+
+        active_uploads[uid] = {
+            "callback": cb,
+            "channel_id": i.channel.id
+        }
+
+        await i.response.send_message(
+            "📷 Отправьте скриншот",
+            ephemeral=True
+        )
 
 # ================= READY =================
 @bot.command()
