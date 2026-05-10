@@ -95,10 +95,17 @@ except:
 # ================= DB FUNCS =================
 def add_passport(uid, passport):
 
+    old_phone = get_phone(uid)
+
     cursor.execute("""
     INSERT OR REPLACE INTO passports
-    VALUES (?, ?)
-    """, (str(uid), passport))
+    (user_id, passport, phone)
+    VALUES (?, ?, ?)
+    """, (
+        str(uid),
+        passport,
+        old_phone
+    ))
 
     conn.commit()
 
