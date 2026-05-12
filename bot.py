@@ -22,6 +22,9 @@ PASSPORT_CHANNEL = 1447305826644525136
 CAR_CHANNEL = 1447638380933546096
 CAR_ADMIN_CHANNEL = 1503869045974368346
 
+BP_CHANNEL = 1497992598504214638
+BP_MESSAGE_ID = None
+
 # ================= COLORS =================
 BANK_COLOR = discord.Color.from_rgb(0, 255, 140)
 
@@ -630,6 +633,98 @@ def bank_embed():
         color=BANK_COLOR
     )
 
+def bp_embed():
+
+        embed.add_field(
+        name="🏛 Гос. организации",
+        value=(
+            "```"
+            "Выдать 5 медкарт EMS              | 1 | 2\n"
+            "Закрыть 15 вызовов EMS            | 2 | 4\n"
+            "1 арест LSPD/LSSD                 | 1 | 2\n"
+            "2 авто на учёт                    | 1 | 2\n"
+            "5 гос. вызовов                    | 2 | 4\n"
+            "2 залога адвокат                  | 2 | 4\n"
+            "40 проверок Weazel                | 2 | 4\n"
+            "1 эфир Weazel News                | 2 | 4"
+            "```"
+        ),
+        inline=False
+    )
+
+    embed.add_field(
+        name="🔫 Crime / Нелегал",
+        value=(
+            "```"
+            "Капт / Бизвар                     | 1 | 2\n"
+            "Хаммер с ВЗХ                      | 3 | 6\n"
+            "5 оплат контрабанды               | 2 | 4\n"
+            "15 взломов/угонов                 | 2 | 4\n"
+            "7 граффити                        | 1 | 2"
+            "```"
+        ),
+        inline=False
+    )
+
+    embed.add_field(
+        name="👷 Работы",
+        value=(
+            "```"
+            "25 действий порт                  | 2 | 4\n"
+            "25 шахта                          | 2 | 4\n"
+            "25 стройка                        | 2 | 4\n"
+            "25 пожарный                       | 1 | 2\n"
+            "10 почта                          | 1 | 2\n"
+            "10 ферма                          | 1 | 2\n"
+            "15 дальнобой                      | 2 | 4\n"
+            "2 автобус                         | 2 | 4"
+            "```"
+        ),
+        inline=False
+    )
+
+    embed.add_field(
+        name="🎮 Одиночные",
+        value=(
+            "```"
+            "3 часа AFK                        | 2 | 4\n"
+            "Кино студия                      | 2 | 4\n"
+            "Тир                              | 1 | 2\n"
+            "Казино 0/00                      | 2 | 4\n"
+            "20 зал                           | 1 | 2\n"
+            "Лотерея                          | 1 | 2\n"
+            "2 внешности                      | 2 | 4"
+            "```"
+        ),
+        inline=False
+    )
+
+    embed.add_field(
+        name="🤝 Парные",
+        value=(
+            "```"
+            "Картинг                          | 1 | 2\n"
+            "Уличная гонка                   | 1 | 2\n"
+            "Dance Battle x3                 | 2 | 4\n"
+            "Maze Bank x3                    | 1 | 2\n"
+            "ТК x5                           | 1 | 2"
+            "```"
+        ),
+        inline=False
+    )
+
+    return discord.Embed(
+        title="🎯 BONUS POINTS (BP) — WAYNE INC.",
+        description=(
+            "```fix\n"
+            "СИСТЕМА НАЧИСЛЕНИЯ BONUS POINTS\n"
+            "```\n\n"
+            "📌 Все активности фиксируются администрацией\n"
+            "────────────────────────────"
+        ),
+        color=discord.Color.gold()
+    )
+
 class PassportUI(discord.ui.View):
 
     def __init__(self):
@@ -757,6 +852,37 @@ class PassportUI(discord.ui.View):
             embed=embed,
             ephemeral=True
         )
+
+async def update_bp_terminal():
+
+    global BP_MESSAGE_ID
+
+    ch = await bot.fetch_channel(BP_CHANNEL)
+
+    embed = bp_embed()
+
+    if BP_MESSAGE_ID:
+
+        try:
+            msg = await ch.fetch_message(BP_MESSAGE_ID)
+
+            await msg.edit(
+                embed=embed
+            )
+
+            return
+
+        except:
+            BP_MESSAGE_ID = None
+
+    msg = await ch.send(embed=embed)
+
+    try:
+        await msg.pin()
+    except:
+        pass
+
+    BP_MESSAGE_ID = msg.id
 
 async def resolve_member(guild, text):
 
@@ -1299,6 +1425,23 @@ async def terminal_guard():
 
     try:
 
+        bp_ch = await bot.fetch_channel(BP_CHANNEL)
+
+        if BP_MESSAGE_ID:
+
+            try:
+                await bp_ch.fetch_message(BP_MESSAGE_ID)
+            except:
+                BP_MESSAGE_ID = None
+
+        if not BP_MESSAGE_ID:
+            await update_bp_terminal()
+
+    except Exception as e:
+        print("BP TERMINAL ERROR:", e)
+    
+    try:
+
         bank_ch = await bot.fetch_channel(
             CHANNEL_REQUEST
         )
@@ -1707,6 +1850,7 @@ async def on_ready():
     await clear_channel(bank_channel)
     await clear_channel(passport_channel)
     await clear_channel(car_channel)
+    await update_bp_terminal()
 
     BANK_MESSAGE_ID = None
     PASSPORT_MESSAGE_ID = None
