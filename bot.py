@@ -1254,7 +1254,7 @@ async def update_passport_terminal():
         if (
             m.author == bot.user
             and m.embeds
-            and "ГОСУДАРСТВЕННЫЙ РЕЕСТР"
+            and "РЕЕСТР WAYNE"
             in m.embeds[0].title
         ):
 
@@ -1293,26 +1293,77 @@ async def update_passport_terminal():
 async def terminal_guard():
 
     global BANK_MESSAGE_ID
+    global PASSPORT_MESSAGE_ID
+    global CAR_MESSAGE_ID
 
     try:
-        ch = await bot.fetch_channel(CHANNEL_REQUEST)
 
-        # если ID нет — создать заново
+        bank_ch = await bot.fetch_channel(
+            CHANNEL_REQUEST
+        )
+
+        if BANK_MESSAGE_ID:
+
+            try:
+                await bank_ch.fetch_message(
+                    BANK_MESSAGE_ID
+                )
+
+            except:
+
+                BANK_MESSAGE_ID = None
+
         if not BANK_MESSAGE_ID:
-            await update_bank()
-            return
-
-        try:
-            await ch.fetch_message(BANK_MESSAGE_ID)
-
-        except:
-
-            # сообщение удалили -> создать новое
-            BANK_MESSAGE_ID = None
             await update_bank()
 
     except Exception as e:
-        print("TERMINAL GUARD ERROR:", e)
+        print("BANK TERMINAL ERROR:", e)
+
+    try:
+
+        pass_ch = await bot.fetch_channel(
+            PASSPORT_CHANNEL
+        )
+
+        if PASSPORT_MESSAGE_ID:
+
+            try:
+                await pass_ch.fetch_message(
+                    PASSPORT_MESSAGE_ID
+                )
+
+            except:
+
+                PASSPORT_MESSAGE_ID = None
+
+        if not PASSPORT_MESSAGE_ID:
+            await update_passport_terminal()
+
+    except Exception as e:
+        print("PASSPORT TERMINAL ERROR:", e)
+
+    try:
+
+        car_ch = await bot.fetch_channel(
+            CAR_CHANNEL
+        )
+
+        if CAR_MESSAGE_ID:
+
+            try:
+                await car_ch.fetch_message(
+                    CAR_MESSAGE_ID
+                )
+
+            except:
+
+                CAR_MESSAGE_ID = None
+
+        if not CAR_MESSAGE_ID:
+            await update_car_terminal()
+
+    except Exception as e:
+        print("CAR TERMINAL ERROR:", e)    
         
 # ================= CALLBACK UPLOAD =================
 @bot.event
@@ -1627,8 +1678,11 @@ async def clear_channel(channel):
 
 @bot.event
 async def on_ready():
+    
+    global BANK_MESSAGE_ID
+    global PASSPORT_MESSAGE_ID
+    global CAR_MESSAGE_ID
 
-    bot.add_view(CarUI())
     bot.add_view(CarUI())
     
     bot.add_view(PassportUI())
@@ -1638,7 +1692,7 @@ async def on_ready():
     print("BANK ONLINE")
     
     bank_channel = await bot.fetch_channel(
-        1447502603901472900
+        CHANNEL_REQUEST
     )
 
     passport_channel = await bot.fetch_channel(
@@ -1660,7 +1714,6 @@ async def on_ready():
     await update_bank()
     await update_passport_terminal()
     await update_car_terminal()
-    await update_passport_terminal()
 
     if not terminal_guard.is_running():
         terminal_guard.start()
@@ -1691,19 +1744,6 @@ async def add_car_cmd(
         f"✅ Добавлен автомобиль: {name}",
         ephemeral=True
     )
-    
-@tasks.loop(seconds=30)
-async def terminal_guard():
-
-    try:
-        await update_bank()
-    except:
-        pass
-
-    try:
-        await update_passport_terminal()
-    except:
-        pass
         
 # ================= RUN =================
 bot.run(TOKEN)
