@@ -634,7 +634,19 @@ def bank_embed():
     )
 
 def bp_embed():
-        
+
+    embed = discord.Embed(
+        title="🎯 BONUS POINTS (BP) — WAYNE INC.",
+        description=(
+            "```fix\n"
+            "СИСТЕМА НАЧИСЛЕНИЯ BONUS POINTS\n"
+            "```\n\n"
+            "📌 Все активности фиксируются администрацией\n"
+            "────────────────────────────"
+        ),
+        color=discord.Color.gold()
+    )
+    
     embed.add_field(
         name="🏛 Гос. организации",
         value=(
@@ -713,17 +725,7 @@ def bp_embed():
         inline=False
     )
 
-    return discord.Embed(
-        title="🎯 BONUS POINTS (BP) — WAYNE INC.",
-        description=(
-            "```fix\n"
-            "СИСТЕМА НАЧИСЛЕНИЯ BONUS POINTS\n"
-            "```\n\n"
-            "📌 Все активности фиксируются администрацией\n"
-            "────────────────────────────"
-        ),
-        color=discord.Color.gold()
-    )
+    return embed
 
 class PassportUI(discord.ui.View):
 
