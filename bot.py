@@ -1007,8 +1007,8 @@ async def on_message(msg):
 
 # ================= VIEWS (APPROVALS) =================
 class DepositView(discord.ui.View):
-    def __init__(self, uid, amount):
-        super().__init__()
+    def __init__(self, uid=0, amount=0):
+        super().__init__(timeout=None)
         self.uid = uid
         self.amount = amount
 
@@ -1040,8 +1040,8 @@ class DepositView(discord.ui.View):
         await i.message.delete()
 
 class LoanView(discord.ui.View):
-    def __init__(self, uid, amount):
-        super().__init__()
+    def __init__(self, uid=0, amount=0):
+        super().__init__(timeout=None)
         self.uid = uid
         self.amount = amount
         
@@ -1073,8 +1073,8 @@ class LoanView(discord.ui.View):
         await i.message.delete()
     
 class PayDebtView(discord.ui.View):
-    def __init__(self, uid, amount):
-        super().__init__()
+    def __init__(self, uid=0, amount=0):
+        super().__init__(timeout=None)
         self.uid = uid
         self.amount = amount
 
@@ -1251,6 +1251,10 @@ async def on_ready():
 
     if not terminal_guard.is_running():
         terminal_guard.start()
+
+    bot.add_view(DepositView(0, 0))
+    bot.add_view(LoanView(0, 0))
+    bot.add_view(PayDebtView(0, 0))
 
 # ================= AUTO RESTORE TERMINALS =================
 @tasks.loop(seconds=30)
