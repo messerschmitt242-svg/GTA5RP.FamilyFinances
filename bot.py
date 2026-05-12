@@ -5,6 +5,7 @@ from datetime import datetime
 import sqlite3
 import os
 import asyncio
+import music
 
 # ================= CONFIG =================
 TOKEN = os.getenv("TOKEN")
@@ -715,11 +716,11 @@ def bp_embed():
         name="🤝 Парные",
         value=(
             "```"
-            "Гонка в картинге                | 1 | 2 |\n"
-            "Уличная гонка                   | 1 | 2 |\n"
-            "Dance Battle x3                 | 2 | 4 |\n"
-            "Maze Bank Arena x3              | 1 | 2 |\n"
-            "Тренировочный Комплекс x5       | 1 | 2 |"
+            "Гонка в картинге                 | 1 | 2 |\n"
+            "Уличная гонка                    | 1 | 2 |\n"
+            "Dance Battle x3                  | 2 | 4 |\n"
+            "Maze Bank Arena x3               | 1 | 2 |\n"
+            "Тренировочный Комплекс x5        | 1 | 2 |"
             "```"
         ),
         inline=False
@@ -1971,6 +1972,33 @@ class DeleteCarSelect(discord.ui.Select):
             content=f"✅ Автомобиль удалён: {row[0]}",
             view=None
         )
+
+@bot.command()
+async def join(ctx):
+    if ctx.author.voice:
+        await music.connect_to_voice(ctx.author.voice.channel)
+        await ctx.send("🎧 Подключился к голосовому каналу")
+
+@bot.command()
+async def play(ctx, *, query):
+
+    results = music.search_youtube(query)
+
+    if not results:
+        return await ctx.send("❌ Ничего не найдено")
+
+    track = results[0]  # пока авто-выбор
+
+    music.add_to_queue(track["url"])
+
+    await ctx.send(f"➕ Добавлено: {track['title']}")
+
+    await music.start_playing(bot)
+
+@bot.command()
+async def stop(ctx):
+    await music.stop_music()
+    await ctx.send("⛔ Музыка остановлена")
 
 @bot.tree.command(
     name="change_car",
