@@ -19,6 +19,7 @@ CHANNEL_FAMILY_BALANCE = 1501339448250601472
 CHANNEL_TOP_SPONSORS = 1447514330252836906
 
 PASSPORT_CHANNEL = 1447305826644525136
+CAR_CHANNEL = 1447638380933546096
 
 # ================= COLORS =================
 BANK_COLOR = discord.Color.from_rgb(0, 255, 140)
@@ -29,6 +30,7 @@ intents.message_content = True
 intents.messages = True
 intents.guilds = True
 intents.members = True
+CAR_MESSAGE_ID = None
 
 bot = commands.Bot(command_prefix="!", intents=intents)
 guild = discord.Object(id=GUILD_ID)
@@ -91,6 +93,27 @@ try:
     conn.commit()
 except:
     pass
+
+cursor.execute("""
+CREATE TABLE IF NOT EXISTS cars (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT,
+    image TEXT,
+    taken_by TEXT DEFAULT NULL
+)
+""")
+
+cursor.execute("""
+CREATE TABLE IF NOT EXISTS car_logs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    action TEXT,
+    car_name TEXT,
+    user_id TEXT,
+    time TEXT
+)
+""")
+
+conn.commit()
 
 # ================= DB FUNCS =================
 def add_passport(uid, passport):
@@ -261,7 +284,240 @@ def get_top_sponsors():
     cursor.execute("SELECT user_id, amount FROM sponsors ORDER BY amount DESC")
     return cursor.fetchall()
 
+def add_car(name, image):
+
+    cursor.execute("""
+    INSERT INTO cars (name, image)
+    VALUES (?, ?)
+    """, (name, image))
+
+    conn.commit()
+
+
+def delete_car(car_id):
+
+    cursor.execute("""
+    DELETE FROM cars
+    WHERE id=?
+    """, (car_id,))
+
+    conn.commit()
+
+
+def update_car(car_id, image):
+
+    cursor.execute("""
+    UPDATE cars
+    SET image=?
+    WHERE id=?
+    """, (image, car_id))
+
+    conn.commit()
+
+
+def get_all_cars():
+
+    cursor.execute("""
+    SELECT id, name, image, taken_by
+    FROM cars
+    ORDER BY name ASC
+    """)
+
+    return cursor.fetchall()
+
+
+def get_available_cars():
+
+    cursor.execute("""
+    SELECT id, name, image
+    FROM cars
+    WHERE taken_by IS NULL
+    ORDER BY name ASC
+    """)
+
+    return cursor.fetchall()
+
+
+def get_taken_cars():
+
+    cursor.execute("""
+    SELECT id, name, image, taken_by
+    FROM cars
+    WHERE taken_by IS NOT NULL
+    ORDER BY name ASC
+    """)
+
+    return cursor.fetchall()
+
+
+def take_car(car_id, uid):
+
+    cursor.execute("""
+    UPDATE cars
+    SET taken_by=?
+    WHERE id=?
+    """, (str(uid), car_id))
+
+    conn.commit()
+
+
+def return_car(car_id):
+
+    cursor.execute("""
+    UPDATE cars
+    SET taken_by=NULL
+    WHERE id=?
+    """, (car_id,))
+
+    conn.commit()
+
+
+def add_car_log(action, car_name, uid):
+
+    cursor.execute("""
+    INSERT INTO car_logs
+    (action, car_name, user_id, time)
+    VALUES (?, ?, ?, ?)
+    """, (
+        action,
+        car_name,
+        str(uid),
+        datetime.now().strftime("%d.%m %H:%M")
+    ))
+
+    conn.commit()
+
+def car_list_embed(cars, taken=False):
+
+    desc = ""
+
+    for idx, car in enumerate(cars, start=1):
+
+        if taken:
+            desc += (
+                f"{idx}. {car[1]} [НЕДОСТУПЕН]\n"
+            )
+        else:
+            desc += (
+                f"{idx}. {car[1]}\n"
+            )
+
+    return discord.Embed(
+        title="🚘 СПИСОК АВТОМОБИЛЕЙ",
+        description=desc,
+        color=discord.Color.dark_teal()
+    )
+
+class CarUI(discord.ui.View):
+
+    def __init__(self):
+        super().__init__(timeout=None)
+
+    @discord.ui.button(
+        label="🚘 Доступные автомобили",
+        style=discord.ButtonStyle.green,
+        custom_id="cars_available"
+    )
+    async def available(self, i, b):
+
+        cars = get_available_cars()
+
+        if not cars:
+            return await i.response.send_message(
+                "❌ Нет свободных автомобилей",
+                ephemeral=True,
+                delete_after=15
+            )
+
+        await i.response.send_message(
+            embed=car_list_embed(cars, False),
+            view=AvailableCarsView(cars),
+            ephemeral=True
+        )
+
+    @discord.ui.button(
+        label="🔒 Вернуть автомобиль",
+        style=discord.ButtonStyle.red,
+        custom_id="cars_return"
+    )
+    async def return_btn(self, i, b):
+
+        cars = get_taken_cars()
+
+        if not cars:
+            return await i.response.send_message(
+                "❌ Нет выданных автомобилей",
+                ephemeral=True,
+                delete_after=15
+            )
+
+        await i.response.send_message(
+            embed=car_list_embed(cars, True),
+            view=TakenCarsView(cars),
+            ephemeral=True
+        )
+
+    @discord.ui.button(
+        label="📜 Логи",
+        style=discord.ButtonStyle.gray,
+        custom_id="cars_logs"
+    )
+    async def logs(self, i, b):
+
+        if not is_head(i.user):
+            return await i.response.send_message(
+                "❌ Нет доступа",
+                ephemeral=True
+            )
+
+        cursor.execute("""
+        SELECT action, car_name, user_id, time
+        FROM car_logs
+        ORDER BY id DESC
+        LIMIT 10
+        """)
+
+        data = cursor.fetchall()
+
+        desc = "\n".join([
+            f"[{t}] {a} | {c} | <@{u}>"
+            for a,c,u,t in data
+        ]) or "Нет логов"
+
+        await i.response.send_message(
+            embed=discord.Embed(
+                title="📜 ЛОГИ АВТОПАРКА",
+                description=desc,
+                color=discord.Color.dark_teal()
+            ),
+            ephemeral=True
+        )
+        
 # ================= UI =================
+def car_embed():
+
+    available = len(get_available_cars())
+    taken = len(get_taken_cars())
+
+    return discord.Embed(
+        title="🚘 АВТОПАРК WAYNE ENT.",
+        description=(
+
+            "```fix\n"
+            "СИСТЕМА ВЫДАЧИ ТРАНСПОРТА\n"
+            "```\n\n"
+
+            f"🚗 Свободно: {available}\n"
+            "────────────────────\n\n"
+
+            f"🔒 Выдано: {taken}\n"
+            "────────────────────\n\n"
+
+            "⚙️ Используйте кнопки ниже"
+        ),
+        color=discord.Color.dark_teal()
+    )
+
 def bank_embed():
     debts = get_all_debts()
     top = get_top_sponsors()[:3]
@@ -458,6 +714,128 @@ async def resolve_member(guild, text):
             return member
         
     return None
+
+class AvailableCarsView(discord.ui.View):
+
+    def __init__(self, cars):
+
+        super().__init__(timeout=300)
+
+        for idx, car in enumerate(cars, start=1):
+
+            self.add_item(
+                CarButton(idx, car, False)
+            )
+
+class CarButton(discord.ui.Button):
+
+    def __init__(self, idx, car, taken):
+
+        super().__init__(
+            label=str(idx),
+            style=discord.ButtonStyle.secondary
+        )
+
+        self.car = car
+        self.taken = taken
+
+    async def callback(self, i):
+
+        embed = discord.Embed(
+            title=self.car[1],
+            color=discord.Color.dark_teal()
+        )
+
+        embed.set_image(url=self.car[2])
+
+        if self.taken:
+
+            await i.response.send_message(
+                embed=embed,
+                view=ReturnCarView(self.car),
+                ephemeral=True
+            )
+
+        else:
+
+            await i.response.send_message(
+                embed=embed,
+                view=TakeCarView(self.car),
+                ephemeral=True
+            )
+
+class TakeCarView(discord.ui.View):
+
+    def __init__(self, car):
+
+        super().__init__(timeout=300)
+
+        self.car = car
+
+    @discord.ui.button(
+        label="🚘 Забронировать автомобиль",
+        style=discord.ButtonStyle.green
+    )
+    async def take(self, i, b):
+
+        take_car(self.car[0], i.user.id)
+
+        add_car_log(
+            "ВЗЯТ",
+            self.car[1],
+            i.user.id
+        )
+
+        await update_car_terminal()
+
+        await i.response.edit_message(
+            content="✅ Автомобиль забронирован",
+            embed=None,
+            view=None
+        )
+
+
+class ReturnCarView(discord.ui.View):
+
+    def __init__(self, car):
+
+        super().__init__(timeout=300)
+
+        self.car = car
+
+    @discord.ui.button(
+        label="🔓 Вернуть автомобиль",
+        style=discord.ButtonStyle.red
+    )
+    async def return_car_btn(self, i, b):
+
+        return_car(self.car[0])
+
+        add_car_log(
+            "ВОЗВРАЩЕН",
+            self.car[1],
+            i.user.id
+        )
+
+        await update_car_terminal()
+
+        await i.response.edit_message(
+            content="✅ Автомобиль возвращен",
+            embed=None,
+            view=None
+        )
+
+class TakenCarsView(discord.ui.View):
+
+    def __init__(self, cars):
+
+        super().__init__(timeout=300)
+
+        for idx, car in enumerate(cars, start=1):
+
+            self.add_item(
+                CarButton(idx, car, True)
+            )
 
 class MemberSelect(discord.ui.UserSelect):
 
@@ -820,6 +1198,46 @@ class BankUI(discord.ui.View):
             ephemeral=True
         )
 # ================= DASHBOARD =================
+async def update_car_terminal():
+
+    global CAR_MESSAGE_ID
+
+    ch = await bot.fetch_channel(
+        CAR_CHANNEL
+    )
+
+    embed = car_embed()
+
+    if CAR_MESSAGE_ID:
+
+        try:
+
+            msg = await ch.fetch_message(
+                CAR_MESSAGE_ID
+            )
+
+            await msg.edit(
+                embed=embed,
+                view=CarUI()
+            )
+
+            return
+
+        except:
+            pass
+
+    msg = await ch.send(
+        embed=embed,
+        view=CarUI()
+    )
+
+    try:
+        await msg.pin()
+    except:
+        pass
+
+    CAR_MESSAGE_ID = msg.id
+
 async def update_bank():
     global BANK_MESSAGE_ID
 
@@ -1240,6 +1658,10 @@ async def setbank(ctx, amount: int):
     )
 @bot.event
 async def on_ready():
+
+    bot.add_view(CarUI())
+    bot.add_view(CarUI())
+    
     bot.add_view(PassportUI())
     bot.add_view(AddPassportView())
     
@@ -1257,6 +1679,28 @@ async def on_ready():
     bot.add_view(PayDebtView(0, 0))
 
 # ================= AUTO RESTORE TERMINALS =================
+@bot.tree.command(
+    name="add_car",
+    guild=guild
+)
+async def add_car_cmd(
+    i: discord.Interaction,
+    name: str,
+    image: discord.Attachment
+):
+
+    if i.channel.id != CHANNEL_REPORT:
+        return
+
+    add_car(name, image.url)
+
+    await update_car_terminal()
+
+    await i.response.send_message(
+        f"✅ Добавлен автомобиль: {name}",
+        ephemeral=True
+    )
+    
 @tasks.loop(seconds=30)
 async def terminal_guard():
 
