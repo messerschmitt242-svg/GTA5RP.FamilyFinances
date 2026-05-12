@@ -531,7 +531,15 @@ class CarUI(discord.ui.View):
     )
     async def logs(self, i, b):
 
-        if not is_head(i.user):
+        allowed_roles = [
+            1345267230300049408,
+            1447306587571228672
+        ]
+
+        if not any(
+            role.id in allowed_roles
+            for role in i.user.roles
+        ):
             return await i.response.send_message(
                 "❌ Нет доступа",
                 ephemeral=True
@@ -567,7 +575,7 @@ def car_embed():
     taken = len(get_taken_cars())
 
     return discord.Embed(
-        title="🚘 АВТОПАРК WAYNE ENT.",
+        title="🚘 АВТОПАРК WAYNE INC.",
         description=(
 
             "```fix\n"
@@ -1601,6 +1609,22 @@ async def setbank(ctx, amount: int):
             color=BANK_COLOR
         )
     )
+    
+async def clear_channel(channel):
+
+    try:
+
+        await channel.purge(limit=100)
+
+    except:
+
+        async for msg in channel.history(limit=100):
+
+            try:
+                await msg.delete()
+            except:
+                pass
+
 @bot.event
 async def on_ready():
 
@@ -1613,7 +1637,29 @@ async def on_ready():
     await bot.tree.sync(guild=guild)
     print("BANK ONLINE")
     
+    bank_channel = await bot.fetch_channel(
+        1447502603901472900
+    )
+
+    passport_channel = await bot.fetch_channel(
+        1447305826644525136
+    )
+
+    car_channel = await bot.fetch_channel(
+        1447638380933546096
+    )
+
+    await clear_channel(bank_channel)
+    await clear_channel(passport_channel)
+    await clear_channel(car_channel)
+
+    BANK_MESSAGE_ID = None
+    PASSPORT_MESSAGE_ID = None
+    CAR_MESSAGE_ID = None
+
     await update_bank()
+    await update_passport_terminal()
+    await update_car_terminal()
     await update_passport_terminal()
 
     if not terminal_guard.is_running():
