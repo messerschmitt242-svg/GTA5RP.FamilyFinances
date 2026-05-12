@@ -387,26 +387,65 @@ def add_car_log(action, car_name, uid):
 
     conn.commit()
 
-def car_list_embed(cars, taken=False):
+class AvailableSingleCarView(discord.ui.View):
 
-    desc = ""
+    def __init__(self, car):
 
-    for idx, car in enumerate(cars, start=1):
+        super().__init__(timeout=300)
 
-        if taken:
-            desc += (
-                f"{idx}. {car[1]} [НЕДОСТУПЕН]\n"
-            )
-        else:
-            desc += (
-                f"{idx}. {car[1]}\n"
-            )
+        self.car = car
 
-    return discord.Embed(
-        title="🚘 СПИСОК АВТОМОБИЛЕЙ",
-        description=desc,
-        color=discord.Color.dark_teal()
+    @discord.ui.button(
+        label="🚘 Забронировать автомобиль",
+        style=discord.ButtonStyle.green
     )
+    async def take(self, i, b):
+
+        take_car(self.car[0], i.user.id)
+
+        add_car_log(
+            "ВЗЯТ",
+            self.car[1],
+            i.user.id
+        )
+
+        await update_car_terminal()
+
+        await i.response.edit_message(
+            content="✅ Автомобиль забронирован",
+            embed=None,
+            view=None
+        )
+
+class TakenSingleCarView(discord.ui.View):
+
+    def __init__(self, car):
+
+        super().__init__(timeout=300)
+
+        self.car = car
+
+    @discord.ui.button(
+        label="🔓 Вернуть автомобиль",
+        style=discord.ButtonStyle.red
+    )
+    async def return_car_btn(self, i, b):
+
+        return_car(self.car[0])
+
+        add_car_log(
+            "ВОЗВРАЩЕН",
+            self.car[1],
+            i.user.id
+        )
+
+        await update_car_terminal()
+
+        await i.response.edit_message(
+            content="✅ Автомобиль возвращен",
+            embed=None,
+            view=None
+        )
 
 class CarUI(discord.ui.View):
 
@@ -430,10 +469,24 @@ class CarUI(discord.ui.View):
             )
 
         await i.response.send_message(
-            embed=car_list_embed(cars, False),
-            view=AvailableCarsView(cars),
+            "🚘 Список доступных автомобилей:",
             ephemeral=True
         )
+
+        for idx, car in enumerate(cars, start=1):
+
+            embed = discord.Embed(
+                title=f"{idx}. {car[1]}",
+                color=discord.Color.dark_teal()
+            )
+
+            embed.set_image(url=car[2])
+
+            await i.followup.send(
+                embed=embed,
+                view=AvailableSingleCarView(car),
+                ephemeral=True
+            )
 
     @discord.ui.button(
         label="🔒 Вернуть автомобиль",
@@ -452,10 +505,24 @@ class CarUI(discord.ui.View):
             )
 
         await i.response.send_message(
-            embed=car_list_embed(cars, True),
-            view=TakenCarsView(cars),
+            "🔒 Список занятых автомобилей:",
             ephemeral=True
         )
+
+        for idx, car in enumerate(cars, start=1):
+
+            embed = discord.Embed(
+                title=f"{idx}. {car[1]} [НЕДОСТУПЕН]",
+                color=discord.Color.red()
+            )
+
+            embed.set_image(url=car[2])
+
+            await i.followup.send(
+                embed=embed,
+                view=TakenSingleCarView(car),
+                ephemeral=True
+            )
 
     @discord.ui.button(
         label="📜 Логи",
@@ -714,128 +781,6 @@ async def resolve_member(guild, text):
             return member
         
     return None
-
-class AvailableCarsView(discord.ui.View):
-
-    def __init__(self, cars):
-
-        super().__init__(timeout=300)
-
-        for idx, car in enumerate(cars, start=1):
-
-            self.add_item(
-                CarButton(idx, car, False)
-            )
-
-class CarButton(discord.ui.Button):
-
-    def __init__(self, idx, car, taken):
-
-        super().__init__(
-            label=str(idx),
-            style=discord.ButtonStyle.secondary
-        )
-
-        self.car = car
-        self.taken = taken
-
-    async def callback(self, i):
-
-        embed = discord.Embed(
-            title=self.car[1],
-            color=discord.Color.dark_teal()
-        )
-
-        embed.set_image(url=self.car[2])
-
-        if self.taken:
-
-            await i.response.send_message(
-                embed=embed,
-                view=ReturnCarView(self.car),
-                ephemeral=True
-            )
-
-        else:
-
-            await i.response.send_message(
-                embed=embed,
-                view=TakeCarView(self.car),
-                ephemeral=True
-            )
-
-class TakeCarView(discord.ui.View):
-
-    def __init__(self, car):
-
-        super().__init__(timeout=300)
-
-        self.car = car
-
-    @discord.ui.button(
-        label="🚘 Забронировать автомобиль",
-        style=discord.ButtonStyle.green
-    )
-    async def take(self, i, b):
-
-        take_car(self.car[0], i.user.id)
-
-        add_car_log(
-            "ВЗЯТ",
-            self.car[1],
-            i.user.id
-        )
-
-        await update_car_terminal()
-
-        await i.response.edit_message(
-            content="✅ Автомобиль забронирован",
-            embed=None,
-            view=None
-        )
-
-
-class ReturnCarView(discord.ui.View):
-
-    def __init__(self, car):
-
-        super().__init__(timeout=300)
-
-        self.car = car
-
-    @discord.ui.button(
-        label="🔓 Вернуть автомобиль",
-        style=discord.ButtonStyle.red
-    )
-    async def return_car_btn(self, i, b):
-
-        return_car(self.car[0])
-
-        add_car_log(
-            "ВОЗВРАЩЕН",
-            self.car[1],
-            i.user.id
-        )
-
-        await update_car_terminal()
-
-        await i.response.edit_message(
-            content="✅ Автомобиль возвращен",
-            embed=None,
-            view=None
-        )
-
-class TakenCarsView(discord.ui.View):
-
-    def __init__(self, cars):
-
-        super().__init__(timeout=300)
-
-        for idx, car in enumerate(cars, start=1):
-
-            self.add_item(
-                CarButton(idx, car, True)
-            )
 
 class MemberSelect(discord.ui.UserSelect):
 
