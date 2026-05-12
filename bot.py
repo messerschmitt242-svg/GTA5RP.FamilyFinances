@@ -20,6 +20,7 @@ CHANNEL_TOP_SPONSORS = 1447514330252836906
 
 PASSPORT_CHANNEL = 1447305826644525136
 CAR_CHANNEL = 1447638380933546096
+CAR_ADMIN_CHANNEL = 1503869045974368346
 
 # ================= COLORS =================
 BANK_COLOR = discord.Color.from_rgb(0, 255, 140)
@@ -1733,7 +1734,7 @@ async def add_car_cmd(
     image: discord.Attachment
 ):
 
-    if i.channel.id != CHANNEL_REPORT:
+    if i.channel.id != CAR_ADMIN_CHANNEL:
         return
 
     add_car(name, image.url)
@@ -1744,6 +1745,178 @@ async def add_car_cmd(
         f"✅ Добавлен автомобиль: {name}",
         ephemeral=True
     )
+
+@bot.tree.command(
+    name="delete_car",
+    guild=guild
+)
+async def delete_car_cmd(
+    i: discord.Interaction
+):
+
+    if i.channel.id != CAR_ADMIN_CHANNEL:
+        return await i.response.send_message(
+            "❌ Не тот канал",
+            ephemeral=True
+        )
+
+    cars = get_all_cars()
+
+    if not cars:
+        return await i.response.send_message(
+            "❌ Автомобилей нет",
+            ephemeral=True
+        )
+
+    options = []
+
+    for car in cars:
+
+        options.append(
+            discord.SelectOption(
+                label=car[1][:100],
+                value=str(car[0])
+            )
+        )
+
+    select = DeleteCarSelect(options)
+
+    view = discord.ui.View(timeout=60)
+    view.add_item(select)
+
+    await i.response.send_message(
+        "🗑️ Выберите автомобиль:",
+        view=view,
+        ephemeral=True
+    )
+
+
+class DeleteCarSelect(discord.ui.Select):
+
+    def __init__(self, options):
+
+        super().__init__(
+            placeholder="Выберите автомобиль...",
+            options=options
+        )
+
+    async def callback(self, interaction):
+
+        car_id = int(self.values[0])
+
+        cursor.execute("""
+        SELECT name FROM cars
+        WHERE id=?
+        """, (car_id,))
+
+        row = cursor.fetchone()
+
+        if not row:
+            return await interaction.response.send_message(
+                "❌ Автомобиль не найден",
+                ephemeral=True
+            )
+
+        delete_car(car_id)
+
+        await update_car_terminal()
+
+        await interaction.response.edit_message(
+            content=f"✅ Автомобиль удалён: {row[0]}",
+            view=None
+        )
+
+@bot.tree.command(
+    name="change_car",
+    guild=guild
+)
+async def change_car_cmd(
+    i: discord.Interaction
+):
+
+    if i.channel.id != CAR_ADMIN_CHANNEL:
+        return await i.response.send_message(
+            "❌ Не тот канал",
+            ephemeral=True
+        )
+
+    cars = get_all_cars()
+
+    if not cars:
+        return await i.response.send_message(
+            "❌ Автомобилей нет",
+            ephemeral=True
+        )
+
+    options = []
+
+    for car in cars:
+
+        options.append(
+            discord.SelectOption(
+                label=car[1][:100],
+                value=str(car[0])
+            )
+        )
+
+    select = ChangeCarSelect(options)
+
+    view = discord.ui.View(timeout=60)
+    view.add_item(select)
+
+    await i.response.send_message(
+        "🛠️ Выберите автомобиль:",
+        view=view,
+        ephemeral=True
+    )
+
+
+class ChangeCarSelect(discord.ui.Select):
+
+    def __init__(self, options):
+
+        super().__init__(
+            placeholder="Выберите автомобиль...",
+            options=options
+        )
+
+    async def callback(self, interaction):
+
+        car_id = int(self.values[0])
+
+        await interaction.response.send_modal(
+            ChangeCarModal(car_id)
+        )
+
+
+class ChangeCarModal(
+    discord.ui.Modal,
+    title="Изменить фото автомобиля"
+):
+
+    image = discord.ui.TextInput(
+        label="Новая ссылка на изображение"
+    )
+
+    def __init__(self, car_id):
+
+        super().__init__()
+
+        self.car_id = car_id
+
+    async def on_submit(self, i):
+
+        update_car(
+            self.car_id,
+            self.image.value
+        )
+
+        await update_car_terminal()
+
+        await i.response.send_message(
+            "✅ Фото автомобиля обновлено",
+            ephemeral=True
+        )
         
 # ================= RUN =================
 bot.run(TOKEN)
