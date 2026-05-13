@@ -1,4 +1,4 @@
 discord.py
 matplotlib
-wavelink
+wavelink==3.4.1
 PyNaCl
