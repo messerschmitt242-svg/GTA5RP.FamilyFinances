@@ -857,7 +857,6 @@ class PassportUI(discord.ui.View):
         )
 
 async def update_bp_terminal():
-
     global BP_MESSAGE_ID
 
     ch = await bot.fetch_channel(BP_CHANNEL)
@@ -865,7 +864,6 @@ async def update_bp_terminal():
     embed = bp_embed()
 
     if BP_MESSAGE_ID:
-
         try:
             msg = await ch.fetch_message(BP_MESSAGE_ID)
             await msg.edit(embed=embed, view=BPView())
@@ -874,12 +872,6 @@ async def update_bp_terminal():
             BP_MESSAGE_ID = None
 
     msg = await ch.send(embed=embed, view=BPView())
-
-    try:
-        await msg.pin()
-    except:
-        pass
-
     BP_MESSAGE_ID = msg.id
 
 async def resolve_member(guild, text):
