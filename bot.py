@@ -2092,9 +2092,9 @@ class ChangeCarModal(
 
 # ================= LAVALINK =================
 
-LAVALINK_HOST = "lava-v4.ajieblogs.eu.org"
+LAVALINK_HOST = "xxxx.up.railway.app"
 LAVALINK_PORT = 443
-LAVALINK_PASSWORD = "https://dsc.gg/ajidevserver"
+LAVALINK_PASSWORD = "youshallnotpass"
 LAVALINK_SECURE = True
 
 
@@ -2103,7 +2103,7 @@ async def connect_nodes():
     await wavelink.Pool.connect(
         nodes=[
             wavelink.Node(
-                uri=f"https://{LAVALINK_HOST}:{LAVALINK_PORT}",
+                uri=f"https://{LAVALINK_HOST}",
                 password=LAVALINK_PASSWORD
             )
         ],
