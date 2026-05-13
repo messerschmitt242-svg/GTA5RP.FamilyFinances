@@ -1785,7 +1785,6 @@ class PayDebtModal(discord.ui.Modal, title="Repay"):
                     uid,
                     amount)
                 )
-            )
 
         active_uploads[uid] = {
             "callback": cb,
