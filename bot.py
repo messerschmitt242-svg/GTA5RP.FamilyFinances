@@ -1861,10 +1861,6 @@ async def on_ready():
     if not terminal_guard.is_running():
         terminal_guard.start()
 
-    bot.add_view(DepositView(0, 0))
-    bot.add_view(LoanView(0, 0))
-    bot.add_view(PayDebtView(0, 0))
-
 # ================= AUTO RESTORE TERMINALS =================
 @bot.tree.command(
     name="add_car",
