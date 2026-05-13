@@ -1740,7 +1740,7 @@ class LoanModal(discord.ui.Modal, title="Loan"):
                 description=f"{i.user.mention} {self.amount.value}",
                 color=BANK_COLOR
             ),
-            view=LoanView(i.user.id, amount)
+            view=LoanView(i.user.id, int(self.amount.value))
         )
 
         await i.response.send_message("Sent", ephemeral=True)
@@ -2092,9 +2092,6 @@ class ChangeCarModal(
 
 # ================= LAVALINK =================
 
-LAVALINK_HOST = "xxxx.up.railway.app"
-LAVALINK_PORT = 443
-LAVALINK_PASSWORD = "youshallnotpass"
 LAVALINK_SECURE = True
 
 
@@ -2103,8 +2100,8 @@ async def connect_nodes():
     await wavelink.Pool.connect(
         nodes=[
             wavelink.Node(
-                uri=f"https://{LAVALINK_HOST}",
-                password=LAVALINK_PASSWORD
+                uri=f"http://xxxx.up.railway.app:80",
+                password="youshallnotpass"
             )
         ],
         client=bot
