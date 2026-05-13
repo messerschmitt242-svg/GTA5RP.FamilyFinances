@@ -1730,11 +1730,14 @@ class LoanModal(discord.ui.Modal, title="Loan"):
     async def on_submit(self, i):
         ch = await bot.fetch_channel(CHANNEL_REPORT)
         
-        await ch.send(embed=discord.Embed(
-            title="💸 LOAN REQUEST",
-            description=f"{i.user.mention} {self.amount.value}",
-            color=BANK_COLOR
-        ), view=LoanView(i.user.id, amount)))
+        await ch.send(
+            embed=discord.Embed(
+                title="💸 LOAN REQUEST",
+                description=f"{i.user.mention} {self.amount.value}",
+                color=BANK_COLOR
+            ),
+            view=LoanView(i.user.id, amount)
+        )
 
         await i.response.send_message("Sent", ephemeral=True)
 
