@@ -857,6 +857,10 @@ class PassportUI(discord.ui.View):
             ephemeral=True
         )
 
+class BPView(discord.ui.View):
+    def __init__(self):
+        super().__init__(timeout=None)
+
 async def update_bp_terminal():
     global BP_MESSAGE_ID
 
