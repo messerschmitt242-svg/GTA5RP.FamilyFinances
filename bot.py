@@ -6,6 +6,7 @@ import sqlite3
 import os
 import asyncio
 import music
+import wavelink
 
 # ================= CONFIG =================
 TOKEN = os.getenv("TOKEN")
@@ -1957,31 +1958,18 @@ class DeleteCarSelect(discord.ui.Select):
         )
 
 @bot.command()
-async def join(ctx):
-    if ctx.author.voice:
-        await music.connect_to_voice(ctx.author.voice.channel)
-        await ctx.send("🎧 Подключился к голосовому каналу")
+        return await ctx.send(
+            "❌ Вы не в голосовом канале"
+        )
 
-@bot.command()
-async def play(ctx, *, query):
+    await music.connect_to_voice(
+        ctx.author.voice.channel
+    )
 
-    results = music.search_youtube(query)
+    await ctx.send(
+        "🎧 Подключился к голосовому каналу"
+    )
 
-    if not results:
-        return await ctx.send("❌ Ничего не найдено")
-
-    track = results[0]  # пока авто-выбор
-
-    music.add_to_queue(track["url"])
-
-    await ctx.send(f"➕ Добавлено: {track['title']}")
-
-    await music.start_playing(bot)
-
-@bot.command()
-async def stop(ctx):
-    await music.stop_music()
-    await ctx.send("⛔ Музыка остановлена")
 
 @bot.tree.command(
     name="change_car",
@@ -2074,6 +2062,98 @@ class ChangeCarModal(
             "✅ Фото автомобиля обновлено",
             ephemeral=True
         )
-        
+
+# ================= LAVALINK =================
+
+LAVALINK_HOST = "lava-v4.ajieblogs.eu.org"
+LAVALINK_PORT = 443
+LAVALINK_PASSWORD = "https://dsc.gg/ajidevserver"
+LAVALINK_SECURE = True
+
+
+async def connect_nodes():
+
+    await wavelink.Pool.connect(
+        nodes=[
+            wavelink.Node(
+                uri=f"https://{LAVALINK_HOST}:{LAVALINK_PORT}",
+                password=LAVALINK_PASSWORD
+            )
+        ],
+        client=bot
+    )
+
+
+@bot.command()
+async def join(ctx):
+
+    if not ctx.author.voice:
+        return await ctx.send(
+            "❌ Зайди в голосовой канал"
+        )
+
+    channel = ctx.author.voice.channel
+
+    player: wavelink.Player = await channel.connect(
+        cls=wavelink.Player
+    )
+
+    await ctx.send(
+        f"🎧 Подключился к {channel.name}"
+    )
+
+
+@bot.command()
+async def play(ctx, *, query):
+
+    if not ctx.author.voice:
+        return await ctx.send(
+            "❌ Зайди в голосовой канал"
+        )
+
+    player: wavelink.Player
+
+    if ctx.voice_client is None:
+
+        player = await ctx.author.voice.channel.connect(
+            cls=wavelink.Player
+        )
+
+    else:
+        player = ctx.voice_client
+
+    tracks = await wavelink.Playable.search(
+        query
+    )
+
+    if not tracks:
+        return await ctx.send(
+            "❌ Ничего не найдено"
+        )
+
+    track = tracks[0]
+
+    await player.play(track)
+
+    await ctx.send(
+        f"🎵 Сейчас играет: {track.title}"
+    )
+
+
+@bot.command()
+async def stop(ctx):
+
+    player: wavelink.Player = ctx.voice_client
+
+    if not player:
+        return await ctx.send(
+            "❌ Бот не в голосовом канале"
+        )
+
+    await player.disconnect()
+
+    await ctx.send(
+        "⛔ Музыка остановлена"
+    )
 # ================= RUN =================
 bot.run(TOKEN)
