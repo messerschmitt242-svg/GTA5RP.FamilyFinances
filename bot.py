@@ -1711,14 +1711,6 @@ class DepositModal(discord.ui.Modal, title="Deposit"):
                 embed.set_image(
                     url=f"attachment://{file.filename}"
                 )
-
-            try:
-                amount = int(self.amount.value)
-            except:
-                return await i.response.send_message(
-                    "❌ Введите число",
-                    ephemeral=True
-                )
             
             await ch.send(
                 embed=embed,
@@ -1738,14 +1730,6 @@ class LoanModal(discord.ui.Modal, title="Loan"):
 
     async def on_submit(self, i):
         ch = await bot.fetch_channel(CHANNEL_REPORT)
-
-        try:
-            amount = int(self.amount.value)
-        except:
-            return await i.response.send_message(
-                "❌ Введите число",
-                ephemeral=True
-            )
         
         await ch.send(embed=discord.Embed(
             title="💸 LOAN REQUEST",
@@ -1790,14 +1774,6 @@ class PayDebtModal(discord.ui.Modal, title="Repay"):
 
                 embed.set_image(
                     url=f"attachment://{file.filename}"
-                )
-
-            try:
-                amount = int(self.amount.value)
-            except:
-                return await i.response.send_message(
-                    "❌ Введите число",
-                    ephemeral=True
                 )
             
             await ch.send(
