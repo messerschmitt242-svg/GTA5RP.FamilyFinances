@@ -2100,7 +2100,7 @@ async def connect_nodes():
     await wavelink.Pool.connect(
         nodes=[
             wavelink.Node(
-                uri=f"http://xxxx.up.railway.app:80",
+                uri=f"http://lavalink-railway.railway.internal:2333",
                 password="youshallnotpass"
             )
         ],
