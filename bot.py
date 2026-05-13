@@ -1075,7 +1075,7 @@ class FindPassportModal(
                 title="🪪 ПАСПОРТ ГРАЖДАНИНА",
                 description=(
                     f"👤 {member.mention}\n"
-                    f"🪪 #{passport}"
+                    f"🪪 #{passport}\n"
                     f"☎️ {phone if phone else 'Не указан'}"
                 ),
                 color=discord.Color.blurple()
@@ -1308,6 +1308,12 @@ async def update_car_terminal():
         pass
 
     CAR_MESSAGE_ID = msg.id
+    
+def is_head(member):
+    return any(
+        role.id == HEAD_ROLE_ID
+        for role in member.roles
+    )
 
 async def update_bank():
     global BANK_MESSAGE_ID
@@ -1571,6 +1577,10 @@ class DepositView(discord.ui.View):
 
     @discord.ui.button(label="✔", style=discord.ButtonStyle.green)
     async def ok(self, i, b):
+
+        if not is_head(i.user):
+            return await i.response.send_message("❌ Нет доступа", ephemeral=True)
+        
         add_balance(self.amount)
         add_sponsor(self.uid, self.amount)
 
@@ -1604,6 +1614,10 @@ class LoanView(discord.ui.View):
         
     @discord.ui.button(label="✔", style=discord.ButtonStyle.green)
     async def ok(self, i, b):
+
+        if not is_head(i.user):
+            return await i.response.send_message("❌ Нет доступа", ephemeral=True)
+        
         subtract_balance(self.amount)
         add_debt(self.uid, self.amount)
 
@@ -1637,6 +1651,10 @@ class PayDebtView(discord.ui.View):
 
     @discord.ui.button(label="✔", style=discord.ButtonStyle.green)
     async def ok(self, i, b):
+
+        if not is_head(i.user):
+            return await i.response.send_message("❌ Нет доступа", ephemeral=True)
+            
         current = get_debt(self.uid)
         paid = min(self.amount, current)
 
@@ -1694,12 +1712,20 @@ class DepositModal(discord.ui.Modal, title="Deposit"):
                     url=f"attachment://{file.filename}"
                 )
 
+            try:
+                amount = int(self.amount.value)
+            except:
+                return await i.response.send_message(
+                    "❌ Введите число",
+                    ephemeral=True
+                )
+            
             await ch.send(
                 embed=embed,
                 file=file,
                 view=DepositView(
                     uid,
-                    int(self.amount.value)
+                    amount)
                 )
             )
 
@@ -1713,11 +1739,19 @@ class LoanModal(discord.ui.Modal, title="Loan"):
     async def on_submit(self, i):
         ch = await bot.fetch_channel(CHANNEL_REPORT)
 
+        try:
+            amount = int(self.amount.value)
+        except:
+            return await i.response.send_message(
+                "❌ Введите число",
+                ephemeral=True
+            )
+        
         await ch.send(embed=discord.Embed(
             title="💸 LOAN REQUEST",
             description=f"{i.user.mention} {self.amount.value}",
             color=BANK_COLOR
-        ), view=LoanView(i.user.id, int(self.amount.value)))
+        ), view=LoanView(i.user.id, amount)))
 
         await i.response.send_message("Sent", ephemeral=True)
 
@@ -1758,12 +1792,20 @@ class PayDebtModal(discord.ui.Modal, title="Repay"):
                     url=f"attachment://{file.filename}"
                 )
 
+            try:
+                amount = int(self.amount.value)
+            except:
+                return await i.response.send_message(
+                    "❌ Введите число",
+                    ephemeral=True
+                )
+            
             await ch.send(
                 embed=embed,
                 file=file,
                 view=PayDebtView(
                     uid,
-                    int(self.amount.value)
+                    amount)
                 )
             )
 
@@ -1838,9 +1880,6 @@ async def on_ready():
         1447638380933546096
     )
 
-    await clear_channel(bank_channel)
-    await clear_channel(passport_channel)
-    await clear_channel(car_channel)
     await update_bp_terminal()
 
     BANK_MESSAGE_ID = None
@@ -1850,7 +1889,11 @@ async def on_ready():
     await update_bank()
     await update_passport_terminal()
     await update_car_terminal()
-
+    try:
+        await connect_nodes()
+    except:
+        pass
+    
     if not terminal_guard.is_running():
         terminal_guard.start()
 
@@ -1958,6 +2001,9 @@ class DeleteCarSelect(discord.ui.Select):
         )
 
 @bot.command()
+async def music_join(ctx):
+
+    if not ctx.author.voice:
         return await ctx.send(
             "❌ Вы не в голосовом канале"
         )
