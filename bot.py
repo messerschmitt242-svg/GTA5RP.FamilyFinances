@@ -868,17 +868,12 @@ async def update_bp_terminal():
 
         try:
             msg = await ch.fetch_message(BP_MESSAGE_ID)
-
-            await msg.edit(
-                embed=embed
-            )
-
+            await msg.edit(embed=embed, view=BPView())
             return
-
         except:
             BP_MESSAGE_ID = None
 
-    msg = await ch.send(embed=embed)
+    msg = await ch.send(embed=embed, view=BPView())
 
     try:
         await msg.pin()
