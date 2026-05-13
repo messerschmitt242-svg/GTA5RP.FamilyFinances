@@ -1719,7 +1719,6 @@ class DepositModal(discord.ui.Modal, title="Deposit"):
                     uid,
                     amount)
                 )
-            )
 
         active_uploads[uid] = {"callback": cb, "channel_id": i.channel.id}
 
