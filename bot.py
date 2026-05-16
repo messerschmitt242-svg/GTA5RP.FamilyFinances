@@ -5,8 +5,6 @@ from datetime import datetime
 import sqlite3
 import os
 import asyncio
-import music
-import wavelink
 
 # ================= CONFIG =================
 TOKEN = os.getenv("TOKEN")
@@ -45,6 +43,7 @@ active_uploads = {}
 BANK_MESSAGE_ID = None
 
 # ================= DB =================
+os.makedirs("/data", exist_ok=True)
 conn = sqlite3.connect("/data/family.db")
 cursor = conn.cursor()
 
@@ -1319,6 +1318,25 @@ def is_head(member):
         for role in member.roles
     )
 
+async def admin_log(action, user, amount, admin):
+
+    try:
+        ch = await bot.fetch_channel(CHANNEL_APPROVE)
+
+        await ch.send(
+            embed=discord.Embed(
+                title=f"📜 {action}",
+                description=(
+                    f"👤 Игрок: {user.mention}\n"
+                    f"💵 Сумма: ${amount:,}\n"
+                    f"🛡️ Администратор: {admin.mention}"
+                ),
+                color=discord.Color.orange()
+            )
+        )
+    except Exception as e:
+        print("ADMIN LOG ERROR:", e)
+
 async def update_bank():
     global BANK_MESSAGE_ID
 
@@ -1423,6 +1441,7 @@ async def terminal_guard():
     global BANK_MESSAGE_ID
     global PASSPORT_MESSAGE_ID
     global CAR_MESSAGE_ID
+    global BP_MESSAGE_ID
 
     try:
 
@@ -1694,6 +1713,14 @@ class DepositModal(discord.ui.Modal, title="Deposit"):
     async def on_submit(self, i):
         uid = i.user.id
 
+        try:
+            amount_value = int(self.amount.value.replace(" ", ""))
+        except ValueError:
+            return await i.response.send_message("❌ Сумма должна быть числом", ephemeral=True)
+
+        if amount_value <= 0:
+            return await i.response.send_message("❌ Сумма должна быть больше 0", ephemeral=True)
+
         async def cb(msg, img):
 
             await asyncio.sleep(10)
@@ -1707,7 +1734,7 @@ class DepositModal(discord.ui.Modal, title="Deposit"):
 
             embed = discord.Embed(
                 title="💰 DEPOSIT",
-                description=f"<@{uid}> {self.amount.value}",
+                description=f"<@{uid}> ${amount_value:,}",
                 color=BANK_COLOR
             )
 
@@ -1721,29 +1748,37 @@ class DepositModal(discord.ui.Modal, title="Deposit"):
                 file=file,
                 view=DepositView(
                     uid,
-                    amount)
+                    amount_value)
                 )
 
         active_uploads[uid] = {"callback": cb, "channel_id": i.channel.id}
 
-        await i.response.send_message("Send screenshot", ephemeral=True)
+        await i.response.send_message("📷 Отправьте скриншот", ephemeral=True)
 
 class LoanModal(discord.ui.Modal, title="Loan"):
     amount = discord.ui.TextInput(label="Amount")
 
     async def on_submit(self, i):
+        try:
+            amount_value = int(self.amount.value.replace(" ", ""))
+        except ValueError:
+            return await i.response.send_message("❌ Сумма должна быть числом", ephemeral=True)
+
+        if amount_value <= 0:
+            return await i.response.send_message("❌ Сумма должна быть больше 0", ephemeral=True)
+
         ch = await bot.fetch_channel(CHANNEL_REPORT)
         
         await ch.send(
             embed=discord.Embed(
                 title="💸 LOAN REQUEST",
-                description=f"{i.user.mention} {self.amount.value}",
+                description=f"{i.user.mention} ${amount_value:,}",
                 color=BANK_COLOR
             ),
-            view=LoanView(i.user.id, int(self.amount.value))
+            view=LoanView(i.user.id, amount_value)
         )
 
-        await i.response.send_message("Sent", ephemeral=True)
+        await i.response.send_message("✅ Заявка отправлена", ephemeral=True)
 
 class PayDebtModal(discord.ui.Modal, title="Repay"):
 
@@ -1752,6 +1787,17 @@ class PayDebtModal(discord.ui.Modal, title="Repay"):
     async def on_submit(self, i):
 
         uid = i.user.id
+
+        try:
+            amount_value = int(self.amount.value.replace(" ", ""))
+        except ValueError:
+            return await i.response.send_message("❌ Сумма должна быть числом", ephemeral=True)
+
+        if amount_value <= 0:
+            return await i.response.send_message("❌ Сумма должна быть больше 0", ephemeral=True)
+
+        if get_debt(uid) <= 0:
+            return await i.response.send_message("❌ У вас нет активного долга", ephemeral=True)
 
         async def cb(msg, img):
 
@@ -1771,7 +1817,7 @@ class PayDebtModal(discord.ui.Modal, title="Repay"):
                 title="📥 REPAY",
                 description=(
                     f"<@{uid}> "
-                    f"{self.amount.value}"
+                    f"${amount_value:,}"
                 ),
                 color=BANK_COLOR
             )
@@ -1787,7 +1833,7 @@ class PayDebtModal(discord.ui.Modal, title="Repay"):
                 file=file,
                 view=PayDebtView(
                     uid,
-                    amount)
+                    amount_value)
                 )
 
         active_uploads[uid] = {
@@ -1870,10 +1916,6 @@ async def on_ready():
     await update_bank()
     await update_passport_terminal()
     await update_car_terminal()
-    try:
-        await connect_nodes()
-    except:
-        pass
     
     if not terminal_guard.is_running():
         terminal_guard.start()
@@ -1981,23 +2023,6 @@ class DeleteCarSelect(discord.ui.Select):
             view=None
         )
 
-@bot.command()
-async def music_join(ctx):
-
-    if not ctx.author.voice:
-        return await ctx.send(
-            "❌ Вы не в голосовом канале"
-        )
-
-    await music.connect_to_voice(
-        ctx.author.voice.channel
-    )
-
-    await ctx.send(
-        "🎧 Подключился к голосовому каналу"
-    )
-
-
 @bot.tree.command(
     name="change_car",
     guild=guild
@@ -2090,94 +2115,5 @@ class ChangeCarModal(
             ephemeral=True
         )
 
-# ================= LAVALINK =================
-
-LAVALINK_SECURE = True
-
-
-async def connect_nodes():
-
-    await wavelink.Pool.connect(
-        nodes=[
-            wavelink.Node(
-                uri="http://lavalink-railway-production-505d.up.railway.app:2333/",
-                password="youshallnotpass"
-            )
-        ],
-        client=bot
-    )
-
-
-@bot.command()
-async def join(ctx):
-
-    if not ctx.author.voice:
-        return await ctx.send(
-            "❌ Зайди в голосовой канал"
-        )
-
-    channel = ctx.author.voice.channel
-
-    player: wavelink.Player = await channel.connect(
-        cls=wavelink.Player
-    )
-
-    await ctx.send(
-        f"🎧 Подключился к {channel.name}"
-    )
-
-
-@bot.command()
-async def play(ctx, *, query):
-
-    if not ctx.author.voice:
-        return await ctx.send(
-            "❌ Зайди в голосовой канал"
-        )
-
-    player: wavelink.Player
-
-    if ctx.voice_client is None:
-
-        player = await ctx.author.voice.channel.connect(
-            cls=wavelink.Player
-        )
-
-    else:
-        player = ctx.voice_client
-
-    tracks = await wavelink.Playable.search(
-        query
-    )
-
-    if not tracks:
-        return await ctx.send(
-            "❌ Ничего не найдено"
-        )
-
-    track = tracks[0]
-
-    await player.play(track)
-
-    await ctx.send(
-        f"🎵 Сейчас играет: {track.title}"
-    )
-
-
-@bot.command()
-async def stop(ctx):
-
-    player: wavelink.Player = ctx.voice_client
-
-    if not player:
-        return await ctx.send(
-            "❌ Бот не в голосовом канале"
-        )
-
-    await player.disconnect()
-
-    await ctx.send(
-        "⛔ Музыка остановлена"
-    )
 # ================= RUN =================
 bot.run(TOKEN)
