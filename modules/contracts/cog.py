@@ -3,7 +3,7 @@ from __future__ import annotations
 import discord
 from discord.ext import commands
 
-from core.utils import clear_channel, extract_rp_name, has_any_role, has_role, safe_pin
+from core.utils import extract_rp_name, has_any_role, has_role, safe_pin
 from modules.contracts.services import ContractService, format_duration, format_requirements
 from modules.skills.constants import ALL_STATS, CLUBS, RANKS, SKILLS, STAT_BY_KEY, STAT_KEYS, stat_name
 
@@ -301,11 +301,8 @@ class ContractsCog(commands.Cog):
     async def start(self):
         await self.ensure_terminal()
 
-    async def ensure_terminal(self):
-        channel = self.bot.get_channel(self.bot.settings.channel_contract_panel)
-        if not channel:
-            return
-        embed = discord.Embed(
+    def panel_embed(self) -> discord.Embed:
+        return discord.Embed(
             title="📑 СИСТЕМА КОНТРАКТОВ WAYNE INC.",
             description=(
                 "```fix\nGTA5RP CONTRACTS MANAGER\n```\n"
@@ -317,7 +314,26 @@ class ContractsCog(commands.Cog):
             ),
             color=COLOR,
         )
-        await clear_channel(channel, 30)
+
+    async def find_existing_panel_message(self, channel: discord.abc.Messageable) -> discord.Message | None:
+        async for message in channel.history(limit=50):
+            if message.author.id != self.bot.user.id:
+                continue
+            if not message.embeds:
+                continue
+            if message.embeds[0].title == "📑 СИСТЕМА КОНТРАКТОВ WAYNE INC.":
+                return message
+        return None
+
+    async def ensure_terminal(self):
+        channel = self.bot.get_channel(self.bot.settings.channel_contract_panel)
+        if not channel:
+            return
+        embed = self.panel_embed()
+        msg = await self.find_existing_panel_message(channel)
+        if msg:
+            await msg.edit(embed=embed, view=ContractPanel(self))
+            return
         msg = await channel.send(embed=embed, view=ContractPanel(self))
         await safe_pin(msg)
 

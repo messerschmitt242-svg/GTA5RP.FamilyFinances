@@ -1,5 +1,5 @@
 import discord
-from discord.ext import commands, tasks
+from discord.ext import commands
 
 from core.config import Settings
 from core.database import Database
@@ -44,22 +44,3 @@ class WayneBot(commands.Bot):
             if starter:
                 await starter()
 
-        if not self.terminal_guard.is_running():
-            self.terminal_guard.start()
-
-    @tasks.loop(seconds=30)
-    async def terminal_guard(self) -> None:
-        for cog_name in ("BankCog", "PassportCog", "CarsCog", "BPCog", "ContractsCog"):
-            cog = self.get_cog(cog_name)
-            if not cog:
-                continue
-            updater = getattr(cog, "ensure_terminal", None)
-            if updater:
-                try:
-                    await updater()
-                except Exception as exc:
-                    print(f"{cog_name} terminal error: {exc}")
-
-    @terminal_guard.before_loop
-    async def before_terminal_guard(self) -> None:
-        await self.wait_until_ready()
