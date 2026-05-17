@@ -28,19 +28,10 @@ class ContractService:
             )
 
     def upsert_profile(self, rp_name: str, discord_id: int | None, discord_name: str | None, values: dict[str, int]) -> None:
-        """Compatibility upsert by RP name. Prefer upsert_profile_for_member
-        when Discord member is known, because Discord ID is stable while display
-        nicknames may change.
-        """
         safe = {k: max(0, int(v)) for k, v in values.items() if k in STAT_KEYS}
         cols = ["rp_name", "discord_id", "discord_name", *safe.keys()]
         vals = [rp_name, str(discord_id) if discord_id else None, discord_name, *safe.values()]
-        set_parts = []
-        if discord_id is not None:
-            set_parts.append("discord_id=EXCLUDED.discord_id")
-        if discord_name is not None:
-            set_parts.append("discord_name=EXCLUDED.discord_name")
-        set_parts.append("updated_at=NOW()")
+        set_parts = ["discord_id=EXCLUDED.discord_id", "discord_name=EXCLUDED.discord_name", "updated_at=NOW()"]
         set_parts += [f"{k}=EXCLUDED.{k}" for k in safe.keys()]
         q = f"""
             INSERT INTO gta_profiles({', '.join(cols)}) VALUES ({', '.join(['?'] * len(cols))})
@@ -49,84 +40,21 @@ class ContractService:
         with self.db.connect() as conn:
             conn.execute(q, tuple(vals))
 
-    def upsert_profile_for_member(self, discord_id: int, discord_name: str, rp_name: str, values: dict[str, int]) -> None:
-        """Stable upsert keyed by Discord ID.
-
-        If the member changes Discord nickname/RP nickname later, the same row is
-        updated by discord_id. This prevents duplicate/left OCR names in DB.
-        """
-        safe = {k: max(0, int(v)) for k, v in values.items() if k in STAT_KEYS}
-        with self.db.connect() as conn:
-            existing = conn.execute("SELECT rp_name FROM gta_profiles WHERE discord_id=?", (str(discord_id),)).fetchone()
-            if existing:
-                # If a previous OCR/manual row exists with the new rp_name but no
-                # Discord binding, remove it before renaming the stable row.
-                duplicate = conn.execute(
-                    "SELECT discord_id FROM gta_profiles WHERE lower(rp_name)=lower(?) AND rp_name<>?",
-                    (rp_name, existing["rp_name"]),
-                ).fetchone()
-                if duplicate and not duplicate["discord_id"]:
-                    conn.execute("DELETE FROM gta_profiles WHERE lower(rp_name)=lower(?) AND discord_id IS NULL", (rp_name,))
-                set_parts = ["rp_name=?", "discord_name=?", "updated_at=NOW()"]
-                params: list = [rp_name, discord_name]
-                for k, v in safe.items():
-                    set_parts.append(f"{k}=?")
-                    params.append(v)
-                params.append(str(discord_id))
-                conn.execute(f"UPDATE gta_profiles SET {', '.join(set_parts)} WHERE discord_id=?", tuple(params))
-                return
-
-            # No row by Discord ID yet. If there is an old row with this RP name,
-            # claim it. Otherwise create a new row.
-            existing_by_name = conn.execute("SELECT rp_name FROM gta_profiles WHERE lower(rp_name)=lower(?)", (rp_name,)).fetchone()
-            if existing_by_name:
-                set_parts = ["discord_id=?", "discord_name=?", "updated_at=NOW()"]
-                params = [str(discord_id), discord_name]
-                for k, v in safe.items():
-                    set_parts.append(f"{k}=?")
-                    params.append(v)
-                params.append(existing_by_name["rp_name"])
-                conn.execute(f"UPDATE gta_profiles SET {', '.join(set_parts)} WHERE rp_name=?", tuple(params))
-                return
-
-            cols = ["rp_name", "discord_id", "discord_name", *safe.keys()]
-            vals = [rp_name, str(discord_id), discord_name, *safe.values()]
-            q = f"INSERT INTO gta_profiles({', '.join(cols)}) VALUES ({', '.join(['?'] * len(cols))})"
-            conn.execute(q, tuple(vals))
-
     def link_guild_members(self, guild) -> int:
         count = 0
         from core.utils import extract_rp_name
         with self.db.connect() as conn:
+            rows = conn.execute("SELECT rp_name FROM gta_profiles").fetchall()
+            known = {r["rp_name"].lower(): r["rp_name"] for r in rows}
             for member in guild.members:
                 if member.bot:
                     continue
                 rp = extract_rp_name(member.display_name)
-                if not rp:
-                    continue
-                row = conn.execute("SELECT rp_name FROM gta_profiles WHERE discord_id=?", (str(member.id),)).fetchone()
-                if row:
-                    conn.execute("UPDATE gta_profiles SET rp_name=?, discord_name=?, updated_at=NOW() WHERE discord_id=?", (rp, member.display_name, str(member.id)))
-                    count += 1
-                    continue
-                old = conn.execute("SELECT rp_name FROM gta_profiles WHERE lower(rp_name)=lower(?)", (rp,)).fetchone()
-                if old:
-                    conn.execute("UPDATE gta_profiles SET discord_id=?, discord_name=?, updated_at=NOW() WHERE rp_name=?", (str(member.id), member.display_name, old["rp_name"]))
+                original = known.get(rp.lower())
+                if original:
+                    conn.execute("UPDATE gta_profiles SET discord_id=?, discord_name=?, updated_at=NOW() WHERE rp_name=?", (str(member.id), member.display_name, original))
                     count += 1
         return count
-
-
-    def get_profile_by_discord_id(self, discord_id: int):
-        with self.db.connect() as conn:
-            return conn.execute("SELECT * FROM gta_profiles WHERE discord_id=?", (str(discord_id),)).fetchone()
-
-    def remove_participant_for_member(self, contract_id: int, discord_id: int, fallback_rp_name: str, actor_id: int) -> None:
-        with self.db.connect() as conn:
-            conn.execute(
-                "DELETE FROM contract_participants WHERE contract_id=? AND (discord_id=? OR rp_name=?)",
-                (contract_id, str(discord_id), fallback_rp_name),
-            )
-        self.log(contract_id, "participant_removed", actor_id, {"discord_id": str(discord_id), "rp_name": fallback_rp_name})
 
     def create_contract(self, title: str, created_by: int, requirements: dict[str, int], source: str = "manual") -> int:
         req = {k: max(0, int(v)) for k, v in requirements.items() if k in STAT_KEYS and int(v) > 0}

@@ -26,13 +26,6 @@ class IconMatch:
     score: float
 
 
-@dataclass(frozen=True)
-class PersonnelRowResult:
-    raw_name: str
-    values: dict[str, int]
-    icon_scores: dict[str, float]
-
-
 class TemplateOcrScanner:
     """Template matching scanner for GTA5RP contract/personnel icons.
 
@@ -46,10 +39,9 @@ class TemplateOcrScanner:
     exact same resolution as the game screenshot.
     """
 
-    def __init__(self, template_dir: str = "assets/ocr/templates", threshold: float = 0.78, strict_threshold: float = 0.92):
+    def __init__(self, template_dir: str = "assets/ocr/templates", threshold: float = 0.54):
         self.template_dir = Path(template_dir)
         self.threshold = threshold
-        self.strict_threshold = strict_threshold
         self._templates: dict[str, list] | None = None
 
     def parse_image(self, path: str) -> dict[str, int]:
@@ -69,51 +61,41 @@ class TemplateOcrScanner:
             result[m.key] = max(result.get(m.key, 0), number)
         return result
 
-    def parse_personnel_table(self, path: str, icon_threshold: float | None = None) -> dict[str, dict[str, int]]:
-        """Parse a personnel list screenshot into {raw_ocr_name: {stat_key: level}}.
+    def parse_personnel_table(self, path: str) -> dict[str, dict[str, int]]:
+        """Parse a personnel list screenshot into {rp_name: {stat_key: level}}.
 
-        This method is intentionally strict: a stat is returned only when the
-        icon match is confident enough. Unknown or weak matches are skipped, so
-        the caller can leave the value empty/manual instead of polluting DB.
+        This is best-effort: if names cannot be OCRed reliably the caller can
+        still use parse_image() as a fallback.
         """
-        rows = self.parse_personnel_rows(path, icon_threshold=icon_threshold)
-        return {row.raw_name: row.values for row in rows if row.raw_name and row.values}
-
-    def parse_personnel_rows(self, path: str, icon_threshold: float | None = None) -> list[PersonnelRowResult]:
         image = self._read_image(path)
         h, w = image.shape[:2]
         rows = self._detect_personnel_rows(image)
         if not rows:
-            return []
+            return {}
 
-        threshold = self.strict_threshold if icon_threshold is None else icon_threshold
-        output: list[PersonnelRowResult] = []
+        output: dict[str, dict[str, int]] = {}
         for y1, y2 in rows:
             row_img = image[y1:y2, :]
             name = self._ocr_name(row_img, w)
             if not name:
                 continue
-            matches = self.find_icon_matches(row_img, restrict_right=True, threshold=threshold)
+            matches = self.find_icon_matches(row_img, restrict_right=True)
             values: dict[str, int] = {}
-            scores: dict[str, float] = {}
             for m in matches:
-                # Do not write uncertain icons. If scores are below threshold they
-                # are not returned by find_icon_matches at all.
                 number = self._read_number_near_icon(row_img, m)
                 if number is not None:
                     values[m.key] = max(values.get(m.key, 0), number)
-                    scores[m.key] = max(scores.get(m.key, 0.0), m.score)
-            output.append(PersonnelRowResult(name, values, scores))
+            if values:
+                output[name] = values
         return output
 
     def template_count(self) -> int:
         return sum(len(v) for v in self._load_templates().values())
 
-    def find_icon_matches(self, image, restrict_right: bool = False, threshold: float | None = None) -> list[IconMatch]:
+    def find_icon_matches(self, image, restrict_right: bool = False) -> list[IconMatch]:
         self._require_deps()
         gray = self._prepare_gray(image)
         h_img, w_img = gray.shape[:2]
-        active_threshold = self.threshold if threshold is None else threshold
         x_min = int(w_img * 0.55) if restrict_right else int(w_img * 0.48)
         search = gray[:, x_min:]
 
@@ -125,7 +107,7 @@ class TemplateOcrScanner:
                     continue
                 res = cv2.matchTemplate(search, tmpl, cv2.TM_CCOEFF_NORMED)
                 _, max_val, _, max_loc = cv2.minMaxLoc(res)
-                if max_val < active_threshold:
+                if max_val < self.threshold:
                     continue
                 x, y = max_loc
                 candidate = IconMatch(key, int(x + x_min), int(y), int(tw), int(th), float(max_val))
