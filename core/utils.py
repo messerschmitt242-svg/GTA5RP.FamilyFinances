@@ -57,3 +57,16 @@ def extract_rp_name(display_name: str) -> str:
     John Wick [Джон] -> John Wick
     """
     return display_name.split("[")[0].strip()
+
+
+async def clear_channel(channel: discord.abc.Messageable, limit: int = 100) -> None:
+    """Delete recent messages from a terminal/panel channel before posting a fresh embed.
+
+    This prevents duplicated panel embeds after Railway redeploys. If the bot lacks
+    permissions, the error is swallowed so startup does not crash.
+    """
+    try:
+        if hasattr(channel, "purge"):
+            await channel.purge(limit=limit, check=lambda _m: True)
+    except Exception as exc:
+        print(f"CLEAR CHANNEL ERROR: {exc}")

@@ -3,7 +3,7 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 
-from core.utils import safe_pin
+from core.utils import clear_channel, safe_pin
 
 CAR_LOG_ROLES = [1345267230300049408, 1447306587571228672]
 
@@ -202,6 +202,7 @@ class CarsCog(commands.Cog):
                 return
             except Exception:
                 self.message_id = None
+        await clear_channel(ch)
         msg = await ch.send(embed=embed, view=CarUI(self))
         await safe_pin(msg)
         self.message_id = msg.id

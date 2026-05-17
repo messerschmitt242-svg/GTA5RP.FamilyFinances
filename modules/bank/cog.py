@@ -3,7 +3,7 @@ import io
 import discord
 from discord.ext import commands
 
-from core.utils import is_head, parse_positive_int, safe_pin
+from core.utils import clear_channel, is_head, parse_positive_int, safe_pin
 
 BANK_COLOR = discord.Color.from_rgb(0, 255, 140)
 
@@ -292,6 +292,7 @@ class BankCog(commands.Cog):
                 return
             except Exception:
                 self.message_id = None
+        await clear_channel(ch)
         msg = await ch.send(embed=embed, view=BankUI(self))
         await safe_pin(msg)
         self.message_id = msg.id

@@ -1,6 +1,8 @@
 import discord
 from discord.ext import commands
 
+from core.utils import clear_channel
+
 
 class BPView(discord.ui.View):
     def __init__(self):
@@ -49,5 +51,6 @@ class BPCog(commands.Cog):
                 return
             except Exception:
                 self.message_id = None
+        await clear_channel(ch)
         msg = await ch.send(embed=bp_embed(), view=BPView())
         self.message_id = msg.id

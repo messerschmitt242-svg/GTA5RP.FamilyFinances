@@ -7,7 +7,7 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 
-from core.utils import extract_rp_name, has_any_role, has_role, safe_pin
+from core.utils import clear_channel, extract_rp_name, has_any_role, has_role, safe_pin
 from modules.contracts.services import ContractService, format_requirements
 from modules.ocr.scanner import TemplateOcrScanner
 from modules.skills.constants import STAT_KEYS, stat_name
@@ -185,6 +185,7 @@ class ContractsCog(commands.Cog):
                 return
             except Exception:
                 pass
+        await clear_channel(channel)
         msg = await channel.send(embed=embed, view=ContractPanel(self))
         self.panel_message_id = msg.id
         await safe_pin(msg)
