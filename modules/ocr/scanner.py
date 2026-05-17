@@ -200,15 +200,21 @@ class TemplateOcrScanner:
 
     def _read_number_near_icon(self, image, match: IconMatch) -> int | None:
         h_img, w_img = image.shape[:2]
-        # GTA5RP level number is usually at the lower-left/bottom edge of the icon.
-        x1 = max(0, match.x - 12)
-        y1 = max(0, match.y + int(match.h * 0.45))
-        x2 = min(w_img, match.x + match.w + 24)
-        y2 = min(h_img, match.y + match.h + 24)
+        # GTA5RP draws the level as tiny white digits at the lower-left / lower edge
+        # of the icon. Keep the crop intentionally narrow: a wide crop often catches
+        # the next icon's digit and produces values like 410 or 593.
+        crop_w = max(28, int(match.w * 1.05))
+        crop_h = max(20, int(match.h * 0.85))
+        x1 = max(0, match.x - 8)
+        y1 = max(0, match.y + int(match.h * 0.32))
+        x2 = min(w_img, x1 + crop_w)
+        y2 = min(h_img, y1 + crop_h + 8)
         if x2 <= x1 or y2 <= y1:
             return None
         number = self._ocr_number(image[y1:y2, x1:x2])
-        if number is not None and 0 <= number <= 999:
+        # Personnel values are normally small, contract values are usually below 100.
+        # Reject obviously merged OCR artifacts.
+        if number is not None and 0 <= number <= 99:
             return number
         return None
 
@@ -253,19 +259,26 @@ class TemplateOcrScanner:
         return rows
 
     def _ocr_name(self, row_img, full_width: int) -> str | None:
-        # Name column is on the left, after avatar.
-        x1 = int(full_width * 0.035)
-        x2 = int(full_width * 0.20)
+        # Name column is on the left, after avatar. Start after the avatar to avoid
+        # OCR noise like leading "y" / "7" from the circular portrait.
+        x1 = int(full_width * 0.050)
+        x2 = int(full_width * 0.17)
         h = row_img.shape[0]
-        crop = row_img[max(0, int(h * 0.15)): min(h, int(h * 0.75)), x1:x2]
+        crop = row_img[max(0, int(h * 0.20)): min(h, int(h * 0.72)), x1:x2]
         if crop.size == 0:
             return None
         gray = cv2.cvtColor(crop, cv2.COLOR_BGR2GRAY)
-        gray = cv2.resize(gray, None, fx=3, fy=3, interpolation=cv2.INTER_CUBIC)
-        _, binary = cv2.threshold(gray, 120, 255, cv2.THRESH_BINARY)
-        config = "--psm 7 -c tessedit_char_whitelist=ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_ []-"
+        gray = cv2.resize(gray, None, fx=4, fy=4, interpolation=cv2.INTER_CUBIC)
+        _, binary = cv2.threshold(gray, 130, 255, cv2.THRESH_BINARY)
+        config = "--psm 7 -c tessedit_char_whitelist=ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_"
         text = pytesseract.image_to_string(binary, config=config).strip()
-        text = text.replace(" ", "").replace("[", "").replace("]", "")
         allowed = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_"
         name = "".join(ch for ch in text if ch in allowed)
+
+        # Prefer a GTA-style nickname containing an underscore. Remove accidental
+        # leading OCR garbage before the first capitalized nickname part.
+        import re
+        m = re.search(r"[A-Z][A-Za-z0-9]*_[A-Za-z0-9_]+", name)
+        if m:
+            return m.group(0)
         return name or None

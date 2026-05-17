@@ -40,7 +40,7 @@ class ContractPanel(discord.ui.View):
         if not is_family_member(i.user, self.cog.bot.settings.role_family):
             return await i.response.send_message("❌ Обновлять персонал может только роль Family", ephemeral=True)
         self.cog.bot.active_uploads[i.user.id] = {"channel_id": i.channel_id, "callback": self.cog.handle_personnel_screenshot}
-        await i.response.send_message("👥 Отправь скриншот строки/списка персонала. Сейчас OCR работает по иконкам из assets/ocr/templates/.", ephemeral=True)
+        await i.response.send_message("👥 Отправь полный скриншот списка персонала. Бот обновит всех найденных игроков одной пачкой.", ephemeral=True)
 
     @discord.ui.button(label="➕ Ручной контракт", style=discord.ButtonStyle.gray, custom_id="contracts_manual_create")
     async def manual_contract(self, i: discord.Interaction, _):
@@ -218,16 +218,51 @@ class ContractsCog(commands.Cog):
     async def handle_personnel_screenshot(self, message: discord.Message):
         if not message.attachments:
             raise RuntimeError("Нужен файл изображения")
-        rp = extract_rp_name(message.author.display_name)
+
         with tempfile.TemporaryDirectory() as td:
             path = Path(td) / message.attachments[0].filename
             await message.attachments[0].save(path)
-            values = self.scanner.parse_image(str(path))
-        if not values:
-            await self.admin_alert(f"OCR персонала не нашёл навыки. Загружено templates: {self.scanner.template_count()}. Проверь путь assets/ocr/templates/<skills|ranks|clubs>/ и названия файлов.")
-            raise RuntimeError("OCR не нашёл иконки/числа. Проверь templates и качество скрина.")
-        self.service.upsert_profile(rp, message.author.id, message.author.display_name, values)
-        await self.contract_log(f"<@{message.author.id}> обновил профиль **{rp}** через OCR\n{format_requirements(values)}")
+            personnel = self.scanner.parse_personnel_table(str(path))
+
+        if not personnel:
+            await self.admin_alert(
+                f"OCR персонала не нашёл строки игроков. Загружено templates: {self.scanner.template_count()}. "
+                "Проверь полный скрин списка персонала и шаблоны assets/ocr/templates/<skills|ranks|clubs>/."
+            )
+            raise RuntimeError("OCR не нашёл строки персонала/иконки/числа. Проверь templates и качество скрина.")
+
+        updated = 0
+        total_values = 0
+        preview_lines: list[str] = []
+
+        for rp_name, values in personnel.items():
+            if not values:
+                continue
+            self.service.upsert_profile(rp_name, None, None, values)
+            updated += 1
+            total_values += len(values)
+            preview_lines.append(f"• **{rp_name}** — {len(values)} знач.")
+
+        # After OCR created/updated RP profiles, try to link them with Discord members
+        # by display nickname: `Wolf_Wayne [Саня]` -> `Wolf_Wayne`.
+        linked = 0
+        if message.guild is not None:
+            linked = self.service.link_guild_members(message.guild)
+
+        if updated <= 0:
+            raise RuntimeError("OCR нашёл строки, но не нашёл значений навыков/рангов/клубов.")
+
+        shown = "\n".join(preview_lines[:20])
+        if len(preview_lines) > 20:
+            shown += f"\n…и ещё {len(preview_lines) - 20}"
+
+        await self.contract_log(
+            f"<@{message.author.id}> массово обновил персонал через OCR\n"
+            f"Игроков обновлено: **{updated}**\n"
+            f"Значений записано: **{total_values}**\n"
+            f"Discord ↔ RP связано: **{linked}**\n\n"
+            f"{shown}"
+        )
 
     def parse_manual_requirements(self, text: str) -> dict[str, int]:
         from modules.skills.constants import ALL_STATS
