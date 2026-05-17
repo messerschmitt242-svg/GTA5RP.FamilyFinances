@@ -168,20 +168,46 @@ class ApprovalView(discord.ui.View):
         raise NotImplementedError
 
     @discord.ui.button(label="✔", style=discord.ButtonStyle.green)
-    async def ok(self, i, b):
+    async def ok(self, i: discord.Interaction, b: discord.ui.Button):
         if not is_head(i.user, self.cog.bot.settings.head_role_id):
             return await i.response.send_message("❌ Нет доступа", ephemeral=True)
-        await self.accepted(i)
-        await self.cog.update_terminal()
-        await i.message.delete()
+
+        # Discord requires any component interaction to be acknowledged within ~3 seconds.
+        # Approval actions touch DB, refresh the bank panel and delete a message, so we defer first
+        # to prevent the client-side "Ошибка взаимодействия" message.
+        await i.response.defer(ephemeral=True, thinking=False)
+
+        try:
+            await self.accepted(i)
+            await self.cog.admin_log(self.log_accept, self.uid, self.amount, i.user)
+            await self.cog.update_terminal()
+            try:
+                await i.message.delete()
+            except discord.NotFound:
+                pass
+            await i.followup.send("✅ Заявка одобрена", ephemeral=True)
+        except Exception as exc:
+            print("BANK APPROVAL ACCEPT ERROR:", repr(exc), flush=True)
+            await i.followup.send(f"❌ Ошибка обработки заявки: `{exc}`", ephemeral=True)
 
     @discord.ui.button(label="❌", style=discord.ButtonStyle.red)
-    async def reject(self, i, b):
+    async def reject(self, i: discord.Interaction, b: discord.ui.Button):
         if not is_head(i.user, self.cog.bot.settings.head_role_id):
             return await i.response.send_message("❌ Нет доступа", ephemeral=True)
-        self.cog.service.add_log(self.log_reject, self.uid, self.amount)
-        await self.cog.admin_log(self.log_reject, self.uid, self.amount, i.user)
-        await i.message.delete()
+
+        await i.response.defer(ephemeral=True, thinking=False)
+
+        try:
+            self.cog.service.add_log(self.log_reject, self.uid, self.amount)
+            await self.cog.admin_log(self.log_reject, self.uid, self.amount, i.user)
+            try:
+                await i.message.delete()
+            except discord.NotFound:
+                pass
+            await i.followup.send("✅ Заявка отклонена", ephemeral=True)
+        except Exception as exc:
+            print("BANK APPROVAL REJECT ERROR:", repr(exc), flush=True)
+            await i.followup.send(f"❌ Ошибка обработки заявки: `{exc}`", ephemeral=True)
 
 
 class DepositView(ApprovalView):
