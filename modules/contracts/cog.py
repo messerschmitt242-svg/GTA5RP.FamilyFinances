@@ -169,8 +169,8 @@ class ContractsCog(commands.Cog):
             title="📑 СИСТЕМА КОНТРАКТОВ WAYNE INC.",
             description=(
                 "```fix\nGTA5RP CONTRACTS MANAGER\n```\n"
-                "• OCR контрактов по иконкам навыков/рангов\n"
-                "• OCR персонала по иконкам\n"
+                "• OCR контракта — добавить контракт в систему путём отправки скриншота окна контракта.\n"
+                "• OCR персонала — массово обновить навыки/ранги/клубы по скриншоту списка персонала.\n"
                 "• Подбор состава до 5 участников\n"
                 "• Бонус Подрядчика: +2% за уровень до 5 уровня\n"
                 "• История контрактов сохраняется в PostgreSQL\n\n"
@@ -206,7 +206,7 @@ class ContractsCog(commands.Cog):
         with tempfile.TemporaryDirectory() as td:
             path = Path(td) / message.attachments[0].filename
             await message.attachments[0].save(path)
-            req = self.scanner.parse_image(str(path))
+            req = self.scanner.parse_contract_image(str(path))
         if not req:
             await self.admin_alert(f"OCR контракта не нашёл требования. Загружено templates: {self.scanner.template_count()}. Проверь путь assets/ocr/templates/<skills|ranks|clubs>/ и названия файлов.")
             raise RuntimeError("OCR не нашёл иконки/числа. Проверь templates и качество скрина.")
@@ -263,6 +263,17 @@ class ContractsCog(commands.Cog):
             f"Discord ↔ RP связано: **{linked}**\n\n"
             f"{shown}"
         )
+
+    @app_commands.command(name="contracts_clear_db", description="Полностью очистить базу контрактов/профилей GTA OCR")
+    async def contracts_clear_db(self, i: discord.Interaction):
+        if i.channel_id != self.bot.settings.channel_admin_alerts:
+            return await i.response.send_message("❌ Эту команду можно использовать только в admin-alerts канале.", ephemeral=True)
+        if not isinstance(i.user, discord.Member) or not is_family_member(i.user, self.bot.settings.role_family):
+            return await i.response.send_message("❌ Очистка доступна только роли Family.", ephemeral=True)
+        await i.response.defer(ephemeral=True)
+        self.service.clear_contract_database()
+        await self.contract_log(f"🧹 <@{i.user.id}> полностью очистил базу контрактов, профилей, требований, участников и истории.")
+        await i.followup.send("✅ База контрактов полностью очищена.", ephemeral=True)
 
     def parse_manual_requirements(self, text: str) -> dict[str, int]:
         from modules.skills.constants import ALL_STATS

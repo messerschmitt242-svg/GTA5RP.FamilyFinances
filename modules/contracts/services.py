@@ -56,6 +56,12 @@ class ContractService:
                     count += 1
         return count
 
+
+    def clear_contract_database(self) -> None:
+        """Remove all contract module data while configuring OCR/templates."""
+        with self.db.connect() as conn:
+            conn.execute("TRUNCATE TABLE contract_history, contract_participants, contract_requirements, contracts, gta_profiles RESTART IDENTITY CASCADE")
+
     def create_contract(self, title: str, created_by: int, requirements: dict[str, int], source: str = "manual") -> int:
         req = {k: max(0, int(v)) for k, v in requirements.items() if k in STAT_KEYS and int(v) > 0}
         with self.db.connect() as conn:
