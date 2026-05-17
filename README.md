@@ -7,6 +7,7 @@
 - `modules/passports/` — паспортный контроль и телефоны
 - `modules/cars/` — автопарк, выдача/возврат, админ-команды `/add_car`, `/delete_car`, `/change_car`
 - `modules/bp/` — embed с Bonus Points
+- `modules/contracts/` — ручная система контрактов, людей, навыков, активных контрактов и истории
 
 ## Railway
 
@@ -34,33 +35,33 @@ PASSPORT_CHANNEL
 CAR_CHANNEL
 CAR_ADMIN_CHANNEL
 BP_CHANNEL
-DATABASE_PATH
+DATABASE_URL
+CHANNEL_CONTRACT_PANEL
+CHANNEL_CONTRACT_LOGS
+CHANNEL_ADMIN_ALERTS
+ROLE_FAMILY
+ROLE_WRESTLER
+MAX_CONTRACT_MEMBERS
 ```
 
-По умолчанию база хранится в `/data/family.db`, как и раньше.
+## Contracts / PostgreSQL
 
+OCR полностью удалён. Контракты и люди добавляются вручную через кнопку панели.
 
-## Contracts V1 / PostgreSQL
+Кнопки панели контрактов:
 
-Railway variables required:
+- `Добавить контракт`
+- `Добавить человека`
+- `Редактировать навык`
+- `Активные`
+- `История контрактов`
 
-```env
-DATABASE_URL=postgresql://...
-CHANNEL_CONTRACT_PANEL=1505366731881975919
-CHANNEL_CONTRACT_LOGS=1505366841185406986
-CHANNEL_ADMIN_ALERTS=1505366944235389040
-ROLE_FAMILY=1447314644141347008
-ROLE_WRESTLER=1447315536550559846
-MAX_CONTRACT_MEMBERS=5
-```
+Лимиты для навыков человека и редактирования:
 
-OCR uses template matching. Put icon images here:
+- обычные навыки/клубы — максимум 5
+- Рыбалка — максимум 6
+- Стрельба — максимум 10
+- Мотоклуб — максимум 4
+- все ранги — максимум 15
 
-```text
-assets/ocr/templates/strength.png
-assets/ocr/templates/shooting.png
-...
-assets/ocr/templates/reporter_rank.png
-```
-
-Both personnel OCR and contract OCR use the same rule: `icon -> number near icon`.
+Из-за ограничения Discord Select максимум в 25 пунктов полный список разбит на категории: навыки, ранги, клубы.

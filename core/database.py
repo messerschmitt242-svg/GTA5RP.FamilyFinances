@@ -139,7 +139,10 @@ class Database:
                 updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
                 source TEXT NOT NULL DEFAULT 'manual',
                 preview_message_id TEXT,
-                panel_message_id TEXT
+                panel_message_id TEXT,
+                reward_bills INTEGER NOT NULL DEFAULT 0 CHECK(reward_bills >= 0),
+                reward_dollars INTEGER NOT NULL DEFAULT 0 CHECK(reward_dollars >= 0),
+                duration_minutes INTEGER NOT NULL DEFAULT 0 CHECK(duration_minutes >= 0)
             );
 
             CREATE TABLE IF NOT EXISTS contract_requirements (
@@ -167,6 +170,9 @@ class Database:
                 created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
             );
         """)
+        conn.execute("ALTER TABLE contracts ADD COLUMN IF NOT EXISTS reward_bills INTEGER NOT NULL DEFAULT 0 CHECK(reward_bills >= 0)")
+        conn.execute("ALTER TABLE contracts ADD COLUMN IF NOT EXISTS reward_dollars INTEGER NOT NULL DEFAULT 0 CHECK(reward_dollars >= 0)")
+        conn.execute("ALTER TABLE contracts ADD COLUMN IF NOT EXISTS duration_minutes INTEGER NOT NULL DEFAULT 0 CHECK(duration_minutes >= 0)")
 
 
 CONTRACT_STAT_COLUMNS = [

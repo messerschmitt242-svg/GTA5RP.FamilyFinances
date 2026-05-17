@@ -20,18 +20,25 @@ class ContractService:
     def __init__(self, db):
         self.db = db
 
-    def log(self, contract_id: int | None, action: str, actor_id: int, payload: dict[str, Any] | None = None) -> None:
+    def log(self, contract_id: int | None, action: str, actor_id: int | str, payload: dict[str, Any] | None = None) -> None:
         with self.db.connect() as conn:
             conn.execute(
                 "INSERT INTO contract_history(contract_id, action, actor_id, payload) VALUES (?, ?, ?, ?::jsonb)",
                 (contract_id, action, str(actor_id), json.dumps(payload or {}, ensure_ascii=False)),
             )
 
-    def upsert_profile(self, rp_name: str, discord_id: int | None, discord_name: str | None, values: dict[str, int]) -> None:
+    def upsert_profile(self, rp_name: str, discord_id: int | str | None, discord_name: str | None, values: dict[str, int]) -> None:
+        rp_name = rp_name.strip()
+        if not rp_name:
+            raise ValueError("RP nickname не может быть пустым")
         safe = {k: max(0, int(v)) for k, v in values.items() if k in STAT_KEYS}
         cols = ["rp_name", "discord_id", "discord_name", *safe.keys()]
         vals = [rp_name, str(discord_id) if discord_id else None, discord_name, *safe.values()]
-        set_parts = ["discord_id=EXCLUDED.discord_id", "discord_name=EXCLUDED.discord_name", "updated_at=NOW()"]
+        set_parts = ["updated_at=NOW()"]
+        if discord_id:
+            set_parts.append("discord_id=EXCLUDED.discord_id")
+        if discord_name:
+            set_parts.append("discord_name=EXCLUDED.discord_name")
         set_parts += [f"{k}=EXCLUDED.{k}" for k in safe.keys()]
         q = f"""
             INSERT INTO gta_profiles({', '.join(cols)}) VALUES ({', '.join(['?'] * len(cols))})
@@ -39,6 +46,17 @@ class ContractService:
         """
         with self.db.connect() as conn:
             conn.execute(q, tuple(vals))
+
+    def update_profile_skill(self, rp_name: str, stat_key: str, value: int, actor_id: int | str) -> None:
+        if stat_key not in STAT_KEYS:
+            raise ValueError("Неизвестный навык")
+        with self.db.connect() as conn:
+            conn.execute(f"UPDATE gta_profiles SET {stat_key}=?, updated_at=NOW() WHERE rp_name=?", (int(value), rp_name))
+        self.log(None, "profile_skill_updated", actor_id, {"rp_name": rp_name, "stat_key": stat_key, "value": int(value)})
+
+    def list_profiles(self, limit: int = 100):
+        with self.db.connect() as conn:
+            return conn.execute("SELECT rp_name, discord_id, discord_name FROM gta_profiles ORDER BY rp_name ASC LIMIT ?", (limit,)).fetchall()
 
     def link_guild_members(self, guild) -> int:
         count = 0
@@ -56,28 +74,47 @@ class ContractService:
                     count += 1
         return count
 
-
-    def clear_contract_database(self) -> None:
-        """Remove all contract module data while configuring OCR/templates."""
-        with self.db.connect() as conn:
-            conn.execute("TRUNCATE TABLE contract_history, contract_participants, contract_requirements, contracts, gta_profiles RESTART IDENTITY CASCADE")
-
-    def create_contract(self, title: str, created_by: int, requirements: dict[str, int], source: str = "manual") -> int:
+    def create_contract(
+        self,
+        title: str,
+        created_by: int | str,
+        requirements: dict[str, int],
+        source: str = "manual",
+        reward_bills: int = 0,
+        reward_dollars: int = 0,
+        duration_minutes: int = 0,
+    ) -> int:
         req = {k: max(0, int(v)) for k, v in requirements.items() if k in STAT_KEYS and int(v) > 0}
         with self.db.connect() as conn:
             row = conn.execute(
-                "INSERT INTO contracts(title, created_by, source, status) VALUES (?, ?, ?, 'open') RETURNING id",
-                (title, str(created_by), source),
+                """
+                INSERT INTO contracts(title, created_by, source, status, reward_bills, reward_dollars, duration_minutes)
+                VALUES (?, ?, ?, 'open', ?, ?, ?) RETURNING id
+                """,
+                (title.strip(), str(created_by), source, int(reward_bills), int(reward_dollars), int(duration_minutes)),
             ).fetchone()
             cid = int(row[0])
             for key, value in req.items():
                 conn.execute("INSERT INTO contract_requirements(contract_id, stat_key, required_level) VALUES (?, ?, ?)", (cid, key, value))
-        self.log(cid, "contract_created", created_by, {"title": title, "requirements": req})
+        self.log(cid, "contract_created", created_by, {"title": title, "requirements": req, "reward_bills": reward_bills, "reward_dollars": reward_dollars, "duration_minutes": duration_minutes})
         return cid
 
     def list_open_contracts(self):
         with self.db.connect() as conn:
-            return conn.execute("SELECT id, title, status, created_at FROM contracts WHERE status IN ('open','draft') ORDER BY id DESC LIMIT 20").fetchall()
+            return conn.execute("SELECT id, title, status, reward_bills, reward_dollars, duration_minutes, created_at FROM contracts WHERE status='open' ORDER BY id DESC LIMIT 20").fetchall()
+
+    def list_history_contracts(self, limit: int = 10):
+        with self.db.connect() as conn:
+            return conn.execute(
+                """
+                SELECT id, title, status, reward_bills, reward_dollars, duration_minutes, updated_at
+                FROM contracts
+                WHERE status IN ('success','failed')
+                ORDER BY updated_at DESC, id DESC
+                LIMIT ?
+                """,
+                (limit,),
+            ).fetchall()
 
     def get_contract(self, contract_id: int):
         with self.db.connect() as conn:
@@ -89,6 +126,7 @@ class ContractService:
             return contract, {r["stat_key"]: int(r["required_level"]) for r in req}, parts
 
     def add_participant(self, contract_id: int, rp_name: str, discord_id: int | None, actor_id: int) -> None:
+        self.upsert_profile(rp_name, discord_id, None, {})
         with self.db.connect() as conn:
             conn.execute(
                 "INSERT INTO contract_participants(contract_id, rp_name, discord_id, added_by) VALUES (?, ?, ?, ?) ON CONFLICT DO NOTHING",
@@ -101,13 +139,14 @@ class ContractService:
             conn.execute("DELETE FROM contract_participants WHERE contract_id=? AND rp_name=?", (contract_id, rp_name))
         self.log(contract_id, "participant_removed", actor_id, {"rp_name": rp_name})
 
-    def close_contract(self, contract_id: int, actor_id: int, status: str = "completed") -> None:
+    def close_contract(self, contract_id: int, actor_id: int, status: str) -> None:
+        if status not in {"success", "failed"}:
+            raise ValueError("Статус должен быть success или failed")
         with self.db.connect() as conn:
             conn.execute("UPDATE contracts SET status=?, updated_at=NOW() WHERE id=?", (status, contract_id))
         self.log(contract_id, f"contract_{status}", actor_id)
 
     def candidates(self, requirements: dict[str, int]) -> list[Candidate]:
-        keys = list(requirements.keys())
         select_cols = ", ".join(["rp_name", "discord_id", *STAT_KEYS])
         with self.db.connect() as conn:
             rows = conn.execute(f"SELECT {select_cols} FROM gta_profiles").fetchall()
@@ -142,8 +181,7 @@ class ContractService:
                 remaining[k] = max(0, remaining[k] - best.values.get(k, 0))
             if all(v <= 0 for v in remaining.values()):
                 break
-        chance = self.calculate_chance(requirements, picked)
-        return picked, remaining, chance
+        return picked, remaining, self.calculate_chance(requirements, picked)
 
     def calculate_chance(self, requirements: dict[str, int], team: list[Candidate]) -> int:
         if not requirements:
@@ -159,3 +197,10 @@ class ContractService:
 
 def format_requirements(req: dict[str, int]) -> str:
     return "\n".join(f"• **{stat_name(k)}:** {v}" for k, v in req.items()) or "—"
+
+
+def format_duration(minutes: int | None) -> str:
+    minutes = int(minutes or 0)
+    if minutes <= 0:
+        return "—"
+    return f"{minutes // 60} ч. {minutes % 60:02d} мин."

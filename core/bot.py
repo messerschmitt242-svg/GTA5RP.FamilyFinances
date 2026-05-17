@@ -1,4 +1,3 @@
-import asyncio
 import discord
 from discord.ext import commands, tasks
 
@@ -23,7 +22,6 @@ class WayneBot(commands.Bot):
         self.settings = settings
         self.db = db
         self.guild_object = discord.Object(id=settings.guild_id)
-        self.active_uploads: dict[int, dict] = {}
         self._ready_once = False
 
     async def setup_hook(self) -> None:
@@ -48,37 +46,6 @@ class WayneBot(commands.Bot):
 
         if not self.terminal_guard.is_running():
             self.terminal_guard.start()
-
-    async def on_message(self, message: discord.Message) -> None:
-        await self.process_commands(message)
-        if message.author.bot:
-            return
-
-        state = self.active_uploads.get(message.author.id)
-        if not state or message.channel.id != state["channel_id"]:
-            return
-
-        has_image = bool(message.attachments) or message.content.startswith("http")
-        if not has_image:
-            return
-
-        loading = await message.channel.send("📤 Обрабатываем изображение...")
-        try:
-            await state["callback"](message)
-            await loading.edit(content="✅ Скриншот успешно загружен")
-        except Exception as exc:
-            await loading.edit(content=f"❌ Ошибка загрузки: {exc}")
-        finally:
-            self.active_uploads.pop(message.author.id, None)
-            await asyncio.sleep(3)
-            try:
-                await loading.delete()
-            except Exception:
-                pass
-            try:
-                await message.delete()
-            except Exception:
-                pass
 
     @tasks.loop(seconds=30)
     async def terminal_guard(self) -> None:
