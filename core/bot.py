@@ -8,6 +8,7 @@ from modules.bank.cog import BankCog
 from modules.passports.cog import PassportCog
 from modules.cars.cog import CarsCog
 from modules.bp.cog import BPCog
+from modules.contracts.cog import ContractsCog
 
 
 class WayneBot(commands.Bot):
@@ -30,6 +31,7 @@ class WayneBot(commands.Bot):
         await self.add_cog(PassportCog(self))
         await self.add_cog(CarsCog(self))
         await self.add_cog(BPCog(self))
+        await self.add_cog(ContractsCog(self))
         self.tree.copy_global_to(guild=self.guild_object)
         await self.tree.sync(guild=self.guild_object)
 
@@ -80,7 +82,7 @@ class WayneBot(commands.Bot):
 
     @tasks.loop(seconds=30)
     async def terminal_guard(self) -> None:
-        for cog_name in ("BankCog", "PassportCog", "CarsCog", "BPCog"):
+        for cog_name in ("BankCog", "PassportCog", "CarsCog", "BPCog", "ContractsCog"):
             cog = self.get_cog(cog_name)
             if not cog:
                 continue

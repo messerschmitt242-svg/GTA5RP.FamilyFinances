@@ -1,3 +1,7 @@
-discord.py
+discord.py>=2.3.2
 matplotlib
 PyNaCl
+psycopg[binary]>=3.1.18
+opencv-python-headless>=4.9.0
+pytesseract>=0.3.10
+Pillow>=10.0.0

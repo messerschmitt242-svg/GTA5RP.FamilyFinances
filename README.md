@@ -38,3 +38,29 @@ DATABASE_PATH
 ```
 
 По умолчанию база хранится в `/data/family.db`, как и раньше.
+
+
+## Contracts V1 / PostgreSQL
+
+Railway variables required:
+
+```env
+DATABASE_URL=postgresql://...
+CHANNEL_CONTRACT_PANEL=1505366731881975919
+CHANNEL_CONTRACT_LOGS=1505366841185406986
+CHANNEL_ADMIN_ALERTS=1505366944235389040
+ROLE_FAMILY=1447314644141347008
+ROLE_WRESTLER=1447315536550559846
+MAX_CONTRACT_MEMBERS=5
+```
+
+OCR uses template matching. Put icon images here:
+
+```text
+assets/ocr/templates/strength.png
+assets/ocr/templates/shooting.png
+...
+assets/ocr/templates/reporter_rank.png
+```
+
+Both personnel OCR and contract OCR use the same rule: `icon -> number near icon`.

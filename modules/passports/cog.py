@@ -11,7 +11,7 @@ class PassportService:
     def add(self, uid: int, passport: str) -> None:
         old_phone = self.phone(uid)
         with self.db.connect() as conn:
-            conn.execute("INSERT OR REPLACE INTO passports (user_id, passport, phone) VALUES (?, ?, ?)", (str(uid), passport, old_phone))
+            conn.execute("INSERT INTO passports (user_id, passport, phone) VALUES (?, ?, ?) ON CONFLICT(user_id) DO UPDATE SET passport=EXCLUDED.passport, phone=EXCLUDED.phone", (str(uid), passport, old_phone))
 
     def delete(self, uid: int) -> None:
         with self.db.connect() as conn:

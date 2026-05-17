@@ -37,3 +37,23 @@ async def safe_pin(message: discord.Message) -> None:
             await message.pin()
     except Exception:
         pass
+
+
+
+def has_role(member: discord.Member, role_id: int) -> bool:
+    return any(role.id == role_id for role in getattr(member, "roles", []))
+
+
+def has_any_role(member: discord.Member, *role_ids: int) -> bool:
+    owned = {role.id for role in getattr(member, "roles", [])}
+    return any(role_id in owned for role_id in role_ids)
+
+
+def extract_rp_name(display_name: str) -> str:
+    """Extract GTA RP name from Discord display name.
+
+    Examples:
+    Wolf_Wayne [Саня] -> Wolf_Wayne
+    John Wick [Джон] -> John Wick
+    """
+    return display_name.split("[")[0].strip()

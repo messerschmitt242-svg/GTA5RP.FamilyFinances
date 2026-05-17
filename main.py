@@ -5,7 +5,7 @@ from core.database import Database
 
 def main() -> None:
     settings = load_settings()
-    db = Database(settings.database_path)
+    db = Database(settings.database_url)
     bot = WayneBot(settings, db)
     bot.run(settings.token)
 

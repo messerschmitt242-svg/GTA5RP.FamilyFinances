@@ -31,7 +31,16 @@ class Settings:
     car_admin_channel: int
     bp_channel: int
 
-    database_path: str = "/data/family.db"
+    database_url: str
+
+    channel_contract_panel: int
+    channel_contract_logs: int
+    channel_admin_alerts: int
+
+    role_family: int
+    role_wrestler: int
+
+    max_contract_members: int = 5
 
 
 def load_settings() -> Settings:
@@ -52,5 +61,11 @@ def load_settings() -> Settings:
         car_channel=_get_int("CAR_CHANNEL", 1447638380933546096, required=True),
         car_admin_channel=_get_int("CAR_ADMIN_CHANNEL", 1503869045974368346, required=True),
         bp_channel=_get_int("BP_CHANNEL", 1497992598504214638, required=True),
-        database_path=os.getenv("DATABASE_PATH", "/data/family.db"),
+        database_url=os.getenv("DATABASE_URL", os.getenv("DATABASE_PATH", "postgresql://postgres:postgres@localhost:5432/postgres")),
+        channel_contract_panel=_get_int("CHANNEL_CONTRACT_PANEL", 1505366731881975919, required=True),
+        channel_contract_logs=_get_int("CHANNEL_CONTRACT_LOGS", 1505366841185406986, required=True),
+        channel_admin_alerts=_get_int("CHANNEL_ADMIN_ALERTS", 1505366944235389040, required=True),
+        role_family=_get_int("ROLE_FAMILY", 1447314644141347008, required=True),
+        role_wrestler=_get_int("ROLE_WRESTLER", 1447315536550559846, required=True),
+        max_contract_members=_get_int("MAX_CONTRACT_MEMBERS", 5),
     )

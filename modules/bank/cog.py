@@ -58,7 +58,7 @@ class BankService:
         with self.db.connect() as conn:
             conn.execute("""
                 INSERT INTO sponsors (user_id, amount) VALUES (?, ?)
-                ON CONFLICT(user_id) DO UPDATE SET amount=amount+excluded.amount
+                ON CONFLICT(user_id) DO UPDATE SET amount=sponsors.amount + EXCLUDED.amount
             """, (str(uid), value))
 
     def sponsors(self):
