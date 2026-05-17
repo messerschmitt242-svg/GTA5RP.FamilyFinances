@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import tempfile
+from difflib import SequenceMatcher
 from pathlib import Path
 
 import discord
@@ -79,7 +80,7 @@ class ContractActionView(discord.ui.View):
         if not can_participate(i.user, self.cog.bot.settings.role_family, self.cog.bot.settings.role_wrestler):
             return await i.response.send_message("❌ Участвовать могут Family или Wrestler", ephemeral=True)
         rp = extract_rp_name(i.user.display_name)
-        self.cog.service.upsert_profile(rp, i.user.id, i.user.display_name, {})
+        self.cog.service.upsert_profile_for_member(i.user.id, i.user.display_name, rp, {})
         self.cog.service.add_participant(self.contract_id, rp, i.user.id, i.user.id)
         await i.response.send_message(f"✅ Ты записан на контракт `#{self.contract_id}` как **{rp}**", ephemeral=True)
         await self.cog.refresh_contract_message(i.message, self.contract_id)
@@ -87,7 +88,7 @@ class ContractActionView(discord.ui.View):
     @discord.ui.button(label="🚪 Выйти", style=discord.ButtonStyle.gray, custom_id="contract_leave")
     async def leave(self, i: discord.Interaction, _):
         rp = extract_rp_name(i.user.display_name)
-        self.cog.service.remove_participant(self.contract_id, rp, i.user.id)
+        self.cog.service.remove_participant_for_member(self.contract_id, i.user.id, rp, i.user.id)
         await i.response.send_message(f"✅ Ты вышел из контракта `#{self.contract_id}`", ephemeral=True)
         await self.cog.refresh_contract_message(i.message, self.contract_id)
 
@@ -215,16 +216,54 @@ class ContractsCog(commands.Cog):
         await self.publish_contract(cid)
         await self.contract_log(f"<@{message.author.id}> создал контракт OCR `#{cid}`\n{format_requirements(req)}")
 
+    def _eligible_member_map(self, guild: discord.Guild) -> dict[str, discord.Member]:
+        """Return RP nickname -> Discord member for Family/Wrestler only.
+
+        OCR personnel sync is allowed to update only known Discord members. This
+        prevents left/random OCR names from being inserted into PostgreSQL.
+        """
+        result: dict[str, discord.Member] = {}
+        for member in guild.members:
+            if member.bot:
+                continue
+            if not can_participate(member, self.bot.settings.role_family, self.bot.settings.role_wrestler):
+                continue
+            rp = extract_rp_name(member.display_name)
+            if rp:
+                result[rp] = member
+        return result
+
+    def _best_known_member(self, raw_name: str, known: dict[str, discord.Member], threshold: float = 0.85):
+        raw_l = raw_name.lower().strip()
+        best_rp = None
+        best_member = None
+        best_score = 0.0
+        for rp, member in known.items():
+            score = SequenceMatcher(None, raw_l, rp.lower()).ratio()
+            if score > best_score:
+                best_score = score
+                best_rp = rp
+                best_member = member
+        if best_member is None or best_score < threshold:
+            return None, None, best_score
+        return best_rp, best_member, best_score
+
     async def handle_personnel_screenshot(self, message: discord.Message):
         if not message.attachments:
             raise RuntimeError("Нужен файл изображения")
+        if message.guild is None:
+            raise RuntimeError("OCR персонала работает только на сервере Discord")
+
+        known = self._eligible_member_map(message.guild)
+        if not known:
+            raise RuntimeError("Не нашёл участников с ролями Family/Wrestler для сопоставления OCR")
 
         with tempfile.TemporaryDirectory() as td:
             path = Path(td) / message.attachments[0].filename
             await message.attachments[0].save(path)
-            personnel = self.scanner.parse_personnel_table(str(path))
+            rows = self.scanner.parse_personnel_rows(str(path), icon_threshold=0.92)
 
-        if not personnel:
+        if not rows:
             await self.admin_alert(
                 f"OCR персонала не нашёл строки игроков. Загружено templates: {self.scanner.template_count()}. "
                 "Проверь полный скрин списка персонала и шаблоны assets/ocr/templates/<skills|ranks|clubs>/."
@@ -234,34 +273,50 @@ class ContractsCog(commands.Cog):
         updated = 0
         total_values = 0
         preview_lines: list[str] = []
+        skipped_lines: list[str] = []
 
-        for rp_name, values in personnel.items():
-            if not values:
+        for row in rows:
+            raw_name = row.raw_name
+            rp_name, member, name_score = self._best_known_member(raw_name, known, threshold=0.85)
+            if member is None or rp_name is None:
+                skipped_lines.append(f"• `{raw_name}` — ник не найден в Discord, совпадение {round(name_score * 100)}%")
                 continue
-            self.service.upsert_profile(rp_name, None, None, values)
-            updated += 1
-            total_values += len(values)
-            preview_lines.append(f"• **{rp_name}** — {len(values)} знач.")
 
-        # After OCR created/updated RP profiles, try to link them with Discord members
-        # by display nickname: `Wolf_Wayne [Саня]` -> `Wolf_Wayne`.
-        linked = 0
-        if message.guild is not None:
-            linked = self.service.link_guild_members(message.guild)
+            if not row.values:
+                skipped_lines.append(f"• **{rp_name}** / `{raw_name}` — уверенных навыков не найдено")
+                continue
+
+            # Stable write by Discord ID. RP nickname may change, but discord_id stays.
+            self.service.upsert_profile_for_member(member.id, member.display_name, rp_name, row.values)
+            updated += 1
+            total_values += len(row.values)
+            preview_lines.append(
+                f"• **{rp_name}** ← `{raw_name}` — {len(row.values)} знач., ник {round(name_score * 100)}%"
+            )
 
         if updated <= 0:
-            raise RuntimeError("OCR нашёл строки, но не нашёл значений навыков/рангов/клубов.")
+            detail = "\n".join(skipped_lines[:12]) or "Нет подходящих строк"
+            await self.admin_alert(
+                "OCR персонала ничего не записал: все строки пропущены.\n"
+                f"{detail}"
+            )
+            raise RuntimeError("OCR ничего не записал: ники не совпали с Discord или навыки были неуверенными.")
 
         shown = "\n".join(preview_lines[:20])
         if len(preview_lines) > 20:
             shown += f"\n…и ещё {len(preview_lines) - 20}"
 
+        skipped = "\n".join(skipped_lines[:10])
+        if len(skipped_lines) > 10:
+            skipped += f"\n…и ещё {len(skipped_lines) - 10}"
+
         await self.contract_log(
             f"<@{message.author.id}> массово обновил персонал через OCR\n"
             f"Игроков обновлено: **{updated}**\n"
             f"Значений записано: **{total_values}**\n"
-            f"Discord ↔ RP связано: **{linked}**\n\n"
+            f"Режим: **только Discord Family/Wrestler + строгие иконки 92%**\n\n"
             f"{shown}"
+            + (f"\n\n**Пропущено:**\n{skipped}" if skipped else "")
         )
 
     def parse_manual_requirements(self, text: str) -> dict[str, int]:
