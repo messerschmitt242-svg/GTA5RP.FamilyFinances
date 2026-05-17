@@ -175,4 +175,5 @@ CONTRACT_STAT_COLUMNS = [
     "mechanic", "firefighter", "trucker", "courier", "contractor", "postman",
     "bandit_rank", "mafia_rank", "police_rank", "sheriff_rank", "federal_rank",
     "army_rank", "medic_rank", "reporter_rank", "goverment_rank",
+    "merryweather_club", "rednecks_club", "moto_club", "auto_club", "epsilon_club",
 ]

@@ -208,8 +208,8 @@ class ContractsCog(commands.Cog):
             await message.attachments[0].save(path)
             req = self.scanner.parse_image(str(path))
         if not req:
-            await self.admin_alert("OCR контракта не нашёл требования. Проверь templates в assets/ocr/templates/.")
-            raise RuntimeError("OCR не нашёл иконки/числа. Нужно добавить шаблоны иконок.")
+            await self.admin_alert(f"OCR контракта не нашёл требования. Загружено templates: {self.scanner.template_count()}. Проверь путь assets/ocr/templates/<skills|ranks|clubs>/ и названия файлов.")
+            raise RuntimeError("OCR не нашёл иконки/числа. Проверь templates и качество скрина.")
         title = f"Контракт OCR #{message.id}"
         cid = self.service.create_contract(title, message.author.id, req, "ocr")
         await self.publish_contract(cid)
@@ -224,8 +224,8 @@ class ContractsCog(commands.Cog):
             await message.attachments[0].save(path)
             values = self.scanner.parse_image(str(path))
         if not values:
-            await self.admin_alert("OCR персонала не нашёл навыки. Проверь templates в assets/ocr/templates/.")
-            raise RuntimeError("OCR не нашёл иконки/числа. Нужно добавить шаблоны иконок.")
+            await self.admin_alert(f"OCR персонала не нашёл навыки. Загружено templates: {self.scanner.template_count()}. Проверь путь assets/ocr/templates/<skills|ranks|clubs>/ и названия файлов.")
+            raise RuntimeError("OCR не нашёл иконки/числа. Проверь templates и качество скрина.")
         self.service.upsert_profile(rp, message.author.id, message.author.display_name, values)
         await self.contract_log(f"<@{message.author.id}> обновил профиль **{rp}** через OCR\n{format_requirements(values)}")
 
