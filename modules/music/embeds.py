@@ -18,16 +18,29 @@ def warn_embed(title: str, description: str = "") -> discord.Embed:
     return base_embed(f"{EMOJI_WARN} {title}", description, 0xF1C40F)
 
 
+def music_center_embed() -> discord.Embed:
+    embed = base_embed(
+        "🎛️ Музыкальный центр WAYNE INC.",
+        (
+            "Управление музыкой теперь полностью через кнопки.\n\n"
+            "**Подключить бота** — ввести название трека и выбрать один из 5 вариантов.\n"
+            "**Добавить плейлист** — добавить плейлист только по ссылке.\n"
+            "**Пауза / Продолжить / Пропуск / Стоп / Очередь** — управление текущим воспроизведением.\n\n"
+            "Все ответы бота, кроме этого центра, отображаются временно только для пользователя."
+        ),
+        0x5865F2,
+    )
+    embed.set_footer(text="Один Discord-бот может играть только в одном голосовом канале сервера одновременно.")
+    return embed
+
+
 def now_playing_embed(track, requester=None) -> discord.Embed:
     title = getattr(track, "title", "Неизвестный трек")
     uri = getattr(track, "uri", None)
     author = getattr(track, "author", "Неизвестный исполнитель")
 
     embed = base_embed(f"{EMOJI_MUSIC} Сейчас играет", color=0x5865F2)
-    if uri:
-        embed.description = f"[{title}]({uri})"
-    else:
-        embed.description = title
+    embed.description = f"[{title}]({uri})" if uri else title
     embed.add_field(name="Исполнитель", value=author or "—", inline=True)
     if requester:
         embed.add_field(name="Добавил", value=requester.mention, inline=True)

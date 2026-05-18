@@ -313,6 +313,58 @@ class MusicService:
         await player.play(track)
         return player, "PLAYING", track
 
+
+    async def queue_track(self, interaction: discord.Interaction, track):
+        player = await self.get_or_connect_player(interaction)
+        if player is None:
+            return None, "NO_PLAYER", track
+
+        try:
+            track.extras = {"requester_id": interaction.user.id}
+        except Exception:
+            pass
+
+        if player.playing or player.paused:
+            await player.queue.put_wait(track)
+            return player, "QUEUED", track
+
+        await player.play(track)
+        return player, "PLAYING", track
+
+    async def queue_tracks(self, interaction: discord.Interaction, tracks: list):
+        if not tracks:
+            return None, "NO_TRACKS", 0
+
+        player = await self.get_or_connect_player(interaction)
+        if player is None:
+            return None, "NO_PLAYER", 0
+
+        added = 0
+        first = tracks[0]
+        rest = tracks[1:]
+
+        try:
+            first.extras = {"requester_id": interaction.user.id}
+        except Exception:
+            pass
+
+        if player.playing or player.paused:
+            await player.queue.put_wait(first)
+            added += 1
+        else:
+            await player.play(first)
+            added += 1
+
+        for track in rest:
+            try:
+                track.extras = {"requester_id": interaction.user.id}
+            except Exception:
+                pass
+            await player.queue.put_wait(track)
+            added += 1
+
+        return player, "QUEUED_PLAYLIST", added
+
     async def cleanup_player(self, player: wavelink.Player) -> None:
         try:
             player.queue.clear()
