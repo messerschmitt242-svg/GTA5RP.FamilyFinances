@@ -126,24 +126,83 @@ class MusicService:
             pass
         return player
 
+    def _normalize_search_result(self, result):
+        """Wavelink can return either a list of tracks or a Playlist object."""
+        if not result:
+            return []
+
+        tracks = getattr(result, "tracks", None)
+        if tracks:
+            return list(tracks)
+
+        try:
+            return list(result)
+        except TypeError:
+            return [result]
+
+    def _track_source(self, name: str):
+        """Return Wavelink TrackSource enum when available, otherwise prefix string."""
+        source_enum = getattr(wavelink, "TrackSource", None)
+        if source_enum is not None:
+            value = getattr(source_enum, name, None)
+            if value is not None:
+                return value
+
+        fallback = {
+            "SoundCloud": "scsearch",
+            "YouTube": "ytsearch",
+            "YouTubeMusic": "ytmsearch",
+        }
+        return fallback.get(name)
+
+    async def _search_one(self, query: str, source):
+        """Search with Wavelink 3 source API. Falls back to old prefix style if needed."""
+        if source is None:
+            result = await wavelink.Playable.search(query, source=None)
+            return self._normalize_search_result(result)
+
+        try:
+            result = await wavelink.Playable.search(query, source=source)
+            return self._normalize_search_result(result)
+        except TypeError:
+            # Compatibility fallback for older Wavelink signatures.
+            prefix = str(source).strip(":")
+            result = await wavelink.Playable.search(f"{prefix}:{query}")
+            return self._normalize_search_result(result)
+
     async def search_tracks(self, query: str):
-        # SoundCloud-first. If user sends URL, Wavelink/Lavalink will resolve it.
-        queries = []
+        query = query.strip()
+        if not query:
+            return []
+
+        # URLs must be resolved directly without adding search prefixes.
         if query.startswith(("http://", "https://")):
-            queries.append(query)
-        else:
-            queries.append(f"scsearch:{query}")
-            queries.append(f"ytsearch:{query}")
+            try:
+                return await self._search_one(query, None)
+            except Exception as exc:
+                log.warning("Direct URL load failed for %s: %s", query, exc, exc_info=True)
+                raise
+
+        # SoundCloud-first for stability, then YouTube, then YouTube Music.
+        sources = [
+            ("SoundCloud", self._track_source("SoundCloud")),
+            ("YouTube", self._track_source("YouTube")),
+            ("YouTubeMusic", self._track_source("YouTubeMusic")),
+        ]
 
         last_exc: Optional[Exception] = None
-        for item in queries:
+        for source_name, source in sources:
+            if source is None:
+                continue
             try:
-                tracks = await wavelink.Playable.search(item)
+                tracks = await self._search_one(query, source)
                 if tracks:
+                    log.info("Music search success: source=%s query=%s results=%s", source_name, query, len(tracks))
                     return tracks
             except Exception as exc:
                 last_exc = exc
-                log.warning("Search failed for %s: %s", item, exc)
+                log.warning("Music search failed: source=%s query=%s error=%s", source_name, query, exc, exc_info=True)
+
         if last_exc:
             raise last_exc
         return []
