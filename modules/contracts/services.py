@@ -91,16 +91,32 @@ class ContractService:
             row = conn.execute(q, tuple(vals)).fetchone()
             return row["rp_name"] if row else rp_name
 
-    def update_profile_skill(self, rp_name: str, stat_key: str, value: int, actor_id: int | str) -> None:
+    def update_profile_skill(self, rp_name: str, stat_key: str, value: int, actor_id: int | str):
         if stat_key not in STAT_KEYS:
             raise ValueError("Неизвестный навык")
         with self.db.connect() as conn:
+            before = conn.execute("SELECT * FROM gta_profiles WHERE rp_name=?", (rp_name,)).fetchone()
             conn.execute(f"UPDATE gta_profiles SET {stat_key}=?, updated_at=NOW() WHERE rp_name=?", (int(value), rp_name))
+            after = conn.execute("SELECT * FROM gta_profiles WHERE rp_name=?", (rp_name,)).fetchone()
         self.log(None, "profile_skill_updated", actor_id, {"rp_name": rp_name, "stat_key": stat_key, "value": int(value)})
+        return before, after
 
     def list_profiles(self, limit: int = 100):
         with self.db.connect() as conn:
             return conn.execute("SELECT rp_name, discord_id, server_tag FROM gta_profiles ORDER BY rp_name ASC LIMIT ?", (limit,)).fetchall()
+
+    def get_profile_by_discord(self, discord_id: int | str):
+        with self.db.connect() as conn:
+            return conn.execute("SELECT * FROM gta_profiles WHERE discord_id=?", (str(discord_id),)).fetchone()
+
+    def get_profile(self, rp_name: str):
+        with self.db.connect() as conn:
+            return conn.execute("SELECT * FROM gta_profiles WHERE rp_name=?", (rp_name,)).fetchone()
+
+    def profile_values_from_row(self, row) -> dict[str, int]:
+        if not row:
+            return {k: 0 for k in STAT_KEYS}
+        return {k: int(row[k] or 0) for k in STAT_KEYS}
 
     def create_contract(self, title: str, created_by: int | str, requirements: dict[str, int], source: str = "manual", reward_bills: int = 0, reward_dollars: int = 0, duration_minutes: int = 0) -> int:
         req = {k: max(0, int(v)) for k, v in requirements.items() if k in STAT_KEYS and int(v) > 0}
@@ -124,12 +140,12 @@ class ContractService:
 
     def list_open_contracts(self):
         with self.db.connect() as conn:
-            return conn.execute("SELECT id, title, status, reward_bills, reward_dollars, duration_minutes, created_at, started_at FROM contracts WHERE status IN ('open','started') ORDER BY id DESC LIMIT 20").fetchall()
+            return conn.execute("SELECT id, title, status, reward_bills, reward_dollars, duration_minutes, created_at, started_at, completion_mode FROM contracts WHERE status IN ('open','mode_select','started') ORDER BY id DESC LIMIT 20").fetchall()
 
     def list_history_contracts(self, limit: int = 10):
         with self.db.connect() as conn:
             return conn.execute("""
-                SELECT id, title, status, reward_bills, reward_dollars, duration_minutes, updated_at
+                SELECT id, title, status, reward_bills, reward_dollars, duration_minutes, updated_at, completion_mode
                 FROM contracts WHERE status IN ('success','failed')
                 ORDER BY updated_at DESC, id DESC LIMIT ?
             """, (limit,)).fetchall()
@@ -206,16 +222,48 @@ class ContractService:
         self.rebalance_contract_members(contract_id)
         self.log(contract_id, "participant_removed", actor_id, {"rp_name": rp_name})
 
-    def start_contract(self, contract_id: int, actor_id: int | str) -> None:
+    def busy_started_participants(self, contract_id: int) -> list[dict[str, Any]]:
         with self.db.connect() as conn:
-            conn.execute("UPDATE contracts SET status='started', started_at=NOW(), updated_at=NOW() WHERE id=? AND status='open'", (contract_id,))
-        self.log(contract_id, "contract_started", actor_id)
+            return conn.execute("""
+                SELECT p.rp_name, p.discord_id, c.id AS contract_id, c.title
+                FROM contract_participants p
+                JOIN contracts c ON c.id = p.contract_id
+                WHERE p.contract_id <> ? AND c.status = 'started'
+                  AND p.rp_name IN (
+                      SELECT rp_name FROM contract_participants WHERE contract_id=?
+                  )
+                ORDER BY p.rp_name ASC
+            """, (contract_id, contract_id)).fetchall()
+
+    def request_contract_mode(self, contract_id: int, actor_id: int | str) -> None:
+        with self.db.connect() as conn:
+            conn.execute("UPDATE contracts SET status='mode_select', updated_at=NOW() WHERE id=? AND status='open'", (contract_id,))
+        self.log(contract_id, "contract_mode_requested", actor_id)
+
+    def choose_contract_mode(self, contract_id: int, actor_id: int | str, mode: str) -> None:
+        if mode not in {"chance", "guaranteed"}:
+            raise ValueError("Неизвестный режим контракта")
+        with self.db.connect() as conn:
+            conn.execute("UPDATE contracts SET status='started', completion_mode=?, started_at=NOW(), updated_at=NOW() WHERE id=? AND status='mode_select'", (mode, contract_id))
+        self.log(contract_id, "contract_started", actor_id, {"mode": mode})
+
+    def list_running_contracts(self):
+        with self.db.connect() as conn:
+            return conn.execute("SELECT id, title, duration_minutes, started_at, completion_mode, available_message_id FROM contracts WHERE status='started'").fetchall()
+
+    def set_result_message_id(self, contract_id: int, message_id: int | str) -> None:
+        with self.db.connect() as conn:
+            conn.execute("UPDATE contracts SET result_message_id=?, updated_at=NOW() WHERE id=?", (str(message_id), contract_id))
+
+    def set_history_message_id(self, contract_id: int, message_id: int | str) -> None:
+        with self.db.connect() as conn:
+            conn.execute("UPDATE contracts SET history_message_id=?, updated_at=NOW() WHERE id=?", (str(message_id), contract_id))
 
     def close_contract(self, contract_id: int, actor_id: int, status: str) -> None:
         if status not in {"success", "failed"}:
             raise ValueError("Статус должен быть success или failed")
         with self.db.connect() as conn:
-            conn.execute("UPDATE contracts SET status=?, updated_at=NOW() WHERE id=?", (status, contract_id))
+            conn.execute("UPDATE contracts SET status=?, finished_at=NOW(), updated_at=NOW() WHERE id=?", (status, contract_id))
         self.log(contract_id, f"contract_{status}", actor_id)
 
     def candidates(self, requirements: dict[str, int]) -> list[Candidate]:
