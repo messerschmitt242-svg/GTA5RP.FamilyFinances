@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import discord
 from discord.ext import commands
+from datetime import datetime, timezone
 
 from core.utils import extract_rp_name, has_any_role, has_role, safe_pin
 from modules.contracts.services import ContractService, format_duration, format_requirements
@@ -59,22 +60,22 @@ class ContractPanel(discord.ui.View):
     @discord.ui.button(label="➕ Добавить контракт", style=discord.ButtonStyle.green, custom_id="contracts_add_contract")
     async def add_contract(self, i: discord.Interaction, _):
         if not is_family_member(i.user, self.cog.bot.settings.role_family):
-            return await i.response.send_message("❌ Создавать контракты может только роль Family", ephemeral=True)
+            return await i.response.send_message("❌ Создавать контракты может только роль Family", ephemeral=True, delete_after=12)
         await i.response.send_modal(StartContractModal(self.cog))
 
     @discord.ui.button(label="👤 Добавить человека", style=discord.ButtonStyle.blurple, custom_id="contracts_add_person")
     async def add_person(self, i: discord.Interaction, _):
         if not is_family_member(i.user, self.cog.bot.settings.role_family):
-            return await i.response.send_message("❌ Добавлять людей может только роль Family", ephemeral=True)
+            return await i.response.send_message("❌ Добавлять людей может только роль Family", ephemeral=True, delete_after=12)
         await i.response.send_modal(StartPersonModal(self.cog))
 
     @discord.ui.button(label="✏️ Редактировать навык", style=discord.ButtonStyle.gray, custom_id="contracts_edit_skill")
     async def edit_skill(self, i: discord.Interaction, _):
         if not is_family_member(i.user, self.cog.bot.settings.role_family):
-            return await i.response.send_message("❌ Редактировать навыки может только роль Family", ephemeral=True)
+            return await i.response.send_message("❌ Редактировать навыки может только роль Family", ephemeral=True, delete_after=12)
         profiles = self.cog.service.list_profiles(25)
         if not profiles:
-            return await i.response.send_message("❌ Сначала добавь хотя бы одного человека.", ephemeral=True)
+            return await i.response.send_message("❌ Сначала добавь хотя бы одного человека.", ephemeral=True, delete_after=12)
         await i.response.send_message("Выбери игрока для редактирования:", view=ProfileSelectView(self.cog, profiles), ephemeral=True)
 
     @discord.ui.button(label="📋 Активные", style=discord.ButtonStyle.secondary, custom_id="contracts_active")
@@ -85,10 +86,11 @@ class ContractPanel(discord.ui.View):
         else:
             desc = "\n\n".join(
                 f"`#{r['id']}` — **{r['title']}**\n"
+                f"Статус: {('🟢 открыт' if r['status'] == 'open' else '⏱️ начат')}\n"
                 f"Награда: {r['reward_bills']} векс. / ${r['reward_dollars']} | Время: {format_duration(r['duration_minutes'])}"
                 for r in rows
             )
-        await i.response.send_message(embed=discord.Embed(title="📋 Активные контракты", description=desc, color=COLOR), ephemeral=True)
+        await i.response.send_message(embed=discord.Embed(title="📋 Активные контракты", description=desc, color=COLOR), ephemeral=True, delete_after=12)
 
     @discord.ui.button(label="📜 История контрактов", style=discord.ButtonStyle.secondary, custom_id="contracts_history")
     async def history(self, i: discord.Interaction, _):
@@ -103,7 +105,7 @@ class ContractPanel(discord.ui.View):
                 f"Награда: {r['reward_bills']} векс. / ${r['reward_dollars']} | Время: {format_duration(r['duration_minutes'])}"
                 for r in rows
             )
-        await i.response.send_message(embed=discord.Embed(title="📜 Последние 10 завершенных контрактов", description=desc, color=COLOR), ephemeral=True)
+        await i.response.send_message(embed=discord.Embed(title="📜 Последние 10 завершенных контрактов", description=desc, color=COLOR), ephemeral=True, delete_after=12)
 
 
 class ContractActionView(discord.ui.View):
@@ -112,38 +114,72 @@ class ContractActionView(discord.ui.View):
         self.cog = cog
         self.contract_id = contract_id
 
-    @discord.ui.button(label="✅ Участвовать", style=discord.ButtonStyle.green, custom_id="contract_join")
+    @discord.ui.button(label="✅ Участвовать", style=discord.ButtonStyle.green, custom_id="contract_join", row=0)
     async def join(self, i: discord.Interaction, _):
         if not can_participate(i.user, self.cog.bot.settings.role_family, self.cog.bot.settings.role_wrestler):
-            return await i.response.send_message("❌ Участвовать могут Family или Wrestler", ephemeral=True)
+            return await i.response.send_message("❌ Участвовать могут Family или Wrestler", ephemeral=True, delete_after=12)
         rp = extract_rp_name(i.user.display_name)
-        self.cog.service.add_participant(self.contract_id, rp, i.user.id, i.user.id)
-        await i.response.send_message(f"✅ Ты записан на контракт `#{self.contract_id}` как **{rp}**", ephemeral=True)
+        try:
+            self.cog.service.add_participant(self.contract_id, rp, i.user.id, i.user.id)
+        except ValueError as exc:
+            return await i.response.send_message(f"❌ {exc}", ephemeral=True, delete_after=12)
+        await i.response.send_message(f"✅ Ты записан на контракт `#{self.contract_id}` как **{rp}**. Система автоматически распределила топ-5 и желающих.", ephemeral=True, delete_after=12)
         await self.cog.refresh_contract_message(i.message, self.contract_id)
 
-    @discord.ui.button(label="🚪 Выйти", style=discord.ButtonStyle.gray, custom_id="contract_leave")
+    @discord.ui.button(label="🚪 Выйти", style=discord.ButtonStyle.gray, custom_id="contract_leave", row=0)
     async def leave(self, i: discord.Interaction, _):
         rp = extract_rp_name(i.user.display_name)
         self.cog.service.remove_participant(self.contract_id, rp, i.user.id)
-        await i.response.send_message(f"✅ Ты вышел из контракта `#{self.contract_id}`", ephemeral=True)
+        await i.response.send_message(f"✅ Ты вышел из контракта `#{self.contract_id}`", ephemeral=True, delete_after=12)
         await self.cog.refresh_contract_message(i.message, self.contract_id)
 
-    @discord.ui.button(label="🧠 Подбор", style=discord.ButtonStyle.blurple, custom_id="contract_suggest")
+    @discord.ui.button(label="🧠 Подбор", style=discord.ButtonStyle.blurple, custom_id="contract_suggest", row=0)
     async def suggest(self, i: discord.Interaction, _):
         data = self.cog.service.get_contract(self.contract_id)
         if not data:
-            return await i.response.send_message("❌ Контракт не найден", ephemeral=True)
+            return await i.response.send_message("❌ Контракт не найден", ephemeral=True, delete_after=12)
         _, req, _ = data
         team, remaining, chance = self.cog.service.suggest_team(req, self.cog.bot.settings.max_contract_members)
-        desc = "\n".join(f"{n+1}. **{c.rp_name}** — вклад {c.score}, Подрядчик {c.contractor}" for n, c in enumerate(team)) or "Нет подходящих игроков"
+        desc = "\n".join(f"{n+1}. **{c.rp_name}** {self.cog.member_tag(c.discord_id)} — вклад {c.score}, Подрядчик {c.contractor}" for n, c in enumerate(team)) or "Нет подходящих игроков"
         left = "\n".join(f"• {stat_name(k)}: {v}" for k, v in remaining.items() if v > 0) or "Все требования закрыты"
-        await i.response.send_message(embed=discord.Embed(title=f"🧠 Подбор состава #{self.contract_id}", description=f"{desc}\n\n**Шанс:** {chance}%\n\n**Остаток:**\n{left}", color=COLOR), ephemeral=True)
+        await i.response.send_message(embed=discord.Embed(title=f"🧠 Подбор состава #{self.contract_id}", description=f"{desc}\n\n**Шанс:** {chance}%\n\n**Остаток:**\n{left}", color=COLOR), ephemeral=True, delete_after=20)
 
-    @discord.ui.button(label="🏁 Успех", style=discord.ButtonStyle.red, custom_id="contract_success")
+    @discord.ui.button(label="➕ Добавить желающих", style=discord.ButtonStyle.secondary, custom_id="contract_promote_waiting", row=1)
+    async def promote_waiting(self, i: discord.Interaction, _):
+        if not is_family_member(i.user, self.cog.bot.settings.role_family):
+            return await i.response.send_message("❌ Добавлять желающих может только Family", ephemeral=True, delete_after=12)
+        count = self.cog.service.promote_waiting(self.contract_id, i.user.id)
+        await i.response.send_message(f"✅ Добавлено желающих: **{count}**", ephemeral=True, delete_after=12)
+        await self.cog.refresh_contract_message(i.message, self.contract_id)
+
+    @discord.ui.button(label="▶️ Начать контракт", style=discord.ButtonStyle.green, custom_id="contract_start", row=1)
+    async def start_contract(self, i: discord.Interaction, _):
+        if not is_family_member(i.user, self.cog.bot.settings.role_family):
+            return await i.response.send_message("❌ Начать контракт может только Family", ephemeral=True, delete_after=12)
+        self.cog.service.start_contract(self.contract_id, i.user.id)
+        await i.response.send_message(f"▶️ Контракт `#{self.contract_id}` начат. Таймер запущен.", ephemeral=True, delete_after=12)
+        await self.cog.refresh_contract_message(i.message, self.contract_id)
+
+    @discord.ui.button(label="🏁 Успех", style=discord.ButtonStyle.red, custom_id="contract_success", row=2)
     async def success(self, i: discord.Interaction, _):
         await self.cog.finish_contract(i, self.contract_id, "success")
 
-    @discord.ui.button(label="💀 Провал", style=discord.ButtonStyle.red, custom_id="contract_failed")
+    @discord.ui.button(label="💀 Провал", style=discord.ButtonStyle.red, custom_id="contract_failed", row=2)
+    async def failed(self, i: discord.Interaction, _):
+        await self.cog.finish_contract(i, self.contract_id, "failed")
+
+
+class StartedContractView(discord.ui.View):
+    def __init__(self, cog: "ContractsCog", contract_id: int):
+        super().__init__(timeout=None)
+        self.cog = cog
+        self.contract_id = contract_id
+
+    @discord.ui.button(label="🏁 Успех", style=discord.ButtonStyle.red, custom_id="contract_started_success")
+    async def success(self, i: discord.Interaction, _):
+        await self.cog.finish_contract(i, self.contract_id, "success")
+
+    @discord.ui.button(label="💀 Провал", style=discord.ButtonStyle.red, custom_id="contract_started_failed")
     async def failed(self, i: discord.Interaction, _):
         await self.cog.finish_contract(i, self.contract_id, "failed")
 
@@ -160,9 +196,9 @@ class StartContractModal(discord.ui.Modal, title="Добавить контра�
         try:
             count = int(str(self.count_input.value).strip())
         except ValueError:
-            return await i.response.send_message("❌ Количество должно быть числом.", ephemeral=True)
+            return await i.response.send_message("❌ Количество должно быть числом.", ephemeral=True, delete_after=12)
         if count < 1 or count > 20:
-            return await i.response.send_message("❌ Укажи количество от 1 до 20.", ephemeral=True)
+            return await i.response.send_message("❌ Укажи количество от 1 до 20.", ephemeral=True, delete_after=12)
         state = {"type": "contract", "title": str(self.title_input.value).strip(), "count": count, "values": {}}
         await i.response.send_message(self.cog.progress_text(state), view=SkillValueView(self.cog, state), ephemeral=True)
 
@@ -180,9 +216,9 @@ class StartPersonModal(discord.ui.Modal, title="Добавить человек�
         try:
             count = int(str(self.count_input.value).strip())
         except ValueError:
-            return await i.response.send_message("❌ Количество должно быть числом.", ephemeral=True)
+            return await i.response.send_message("❌ Количество должно быть числом.", ephemeral=True, delete_after=12)
         if count < 1 or count > 34:
-            return await i.response.send_message("❌ Укажи количество от 1 до 34.", ephemeral=True)
+            return await i.response.send_message("❌ Укажи количество от 1 до 34.", ephemeral=True, delete_after=12)
         state = {"type": "person", "discord_name": str(self.discord_nick.value).strip(), "rp_name": str(self.rp_name.value).strip(), "count": count, "values": {}}
         await i.response.send_message(self.cog.progress_text(state), view=SkillValueView(self.cog, state), ephemeral=True)
 
@@ -202,12 +238,12 @@ class RewardModal(discord.ui.Modal, title="Награда и время"):
             bills = int(str(self.bills.value).replace(" ", ""))
             dollars = int(str(self.dollars.value).replace(" ", ""))
         except ValueError:
-            return await i.response.send_message("❌ Награда должна быть числом.", ephemeral=True)
+            return await i.response.send_message("❌ Награда должна быть числом.", ephemeral=True, delete_after=12)
         minutes = parse_time_to_minutes(str(self.duration.value))
         if minutes is None:
-            return await i.response.send_message("❌ Время укажи в формате `2.10`, где после точки минуты от 00 до 59.", ephemeral=True)
+            return await i.response.send_message("❌ Время укажи в формате `2.10`, где после точки минуты от 00 до 59.", ephemeral=True, delete_after=12)
         cid = self.cog.service.create_contract(self.state["title"], i.user.id, self.state["values"], "manual", bills, dollars, minutes)
-        await i.response.send_message(f"✅ Контракт создан: `#{cid}`", ephemeral=True)
+        await i.response.send_message(f"✅ Контракт создан: `#{cid}`", ephemeral=True, delete_after=12)
         await self.cog.publish_contract(cid)
 
 
@@ -235,17 +271,17 @@ class SkillAmountModal(discord.ui.Modal, title="Количество очков"
         try:
             value = int(str(self.amount.value).strip())
         except ValueError:
-            return await i.response.send_message("❌ Значение должно быть числом.", ephemeral=True)
+            return await i.response.send_message("❌ Значение должно быть числом.", ephemeral=True, delete_after=12)
         if value < 0:
-            return await i.response.send_message("❌ Значение не может быть меньше 0.", ephemeral=True)
+            return await i.response.send_message("❌ Значение не может быть меньше 0.", ephemeral=True, delete_after=12)
         if self.state["type"] in {"person", "edit"}:
             limit = max_value_for(self.stat_key)
             if value > limit:
-                return await i.response.send_message(f"❌ Для **{stat_name(self.stat_key)}** максимум: {limit}.", ephemeral=True)
+                return await i.response.send_message(f"❌ Для **{stat_name(self.stat_key)}** максимум: {limit}.", ephemeral=True, delete_after=12)
         self.state["values"][self.stat_key] = value
         if self.state["type"] == "edit":
             self.cog.service.update_profile_skill(self.state["rp_name"], self.stat_key, value, i.user.id)
-            return await i.response.send_message(f"✅ У **{self.state['rp_name']}** обновлено: {stat_name(self.stat_key)} = {value}", ephemeral=True)
+            return await i.response.send_message(f"✅ У **{self.state['rp_name']}** обновлено: {stat_name(self.stat_key)} = {value}", ephemeral=True, delete_after=12)
         if len(self.state["values"]) >= self.state["count"]:
             if self.state["type"] == "contract":
                 text = (
@@ -257,7 +293,7 @@ class SkillAmountModal(discord.ui.Modal, title="Количество очков"
                 return await i.response.send_message(text, view=RewardButtonView(self.cog, self.state), ephemeral=True)
             self.cog.service.upsert_profile(self.state["rp_name"], None, self.state["discord_name"], self.state["values"])
             await self.cog.contract_log(f"<@{i.user.id}> добавил человека **{self.state['rp_name']}**\n{format_requirements(self.state['values'])}")
-            return await i.response.send_message(f"✅ Человек **{self.state['rp_name']}** добавлен/обновлен.", ephemeral=True)
+            return await i.response.send_message(f"✅ Человек **{self.state['rp_name']}** добавлен/обновлен.", ephemeral=True, delete_after=12)
         await i.response.send_message(self.cog.progress_text(self.state), view=SkillValueView(self.cog, self.state), ephemeral=True)
 
 
@@ -362,40 +398,97 @@ class ContractsCog(commands.Cog):
         lines.append("\nDiscord Select ограничен 25 пунктами, поэтому полный список разбит на категории: навыки, ранги, клубы.")
         return "\n".join(lines)
 
+    def member_tag(self, discord_id: str | int | None) -> str:
+        if not discord_id:
+            return ""
+        try:
+            return f"<@{int(discord_id)}>"
+        except (TypeError, ValueError):
+            return ""
+
+    def format_member_line(self, p, index: int, selected: bool = True) -> str:
+        tag = self.member_tag(p.get("discord_id"))
+        score = int(p.get("score") or 0)
+        icon = ["🥇", "🥈", "🥉", "🔹", "🔹"][index] if selected and index < 5 else "▫️"
+        return f"> {icon} **{p['rp_name']}** {tag} — вклад: **{score}**"
+
+    def format_end_timestamp(self, ends_at) -> str:
+        if not ends_at:
+            return "—"
+        if isinstance(ends_at, str):
+            try:
+                ends_at = datetime.fromisoformat(ends_at.replace("Z", "+00:00"))
+            except ValueError:
+                return str(ends_at)
+        if ends_at.tzinfo is None:
+            ends_at = ends_at.replace(tzinfo=timezone.utc)
+        ts = int(ends_at.timestamp())
+        return f"<t:{ts}:R> / <t:{ts}:T>"
+
     def contract_embed(self, contract_id: int) -> discord.Embed:
         data = self.service.get_contract(contract_id)
         if not data:
             return discord.Embed(title="❌ Контракт не найден", color=discord.Color.red())
         contract, req, parts = data
-        team, remaining, chance = self.service.suggest_team(req, self.bot.settings.max_contract_members)
-        participants = "\n".join(f"• **{p['rp_name']}**" for p in parts) or "Пока никто не записался"
+        selected_parts = [p for p in parts if p.get("queue_status") == "selected"]
+        waiting_parts = [p for p in parts if p.get("queue_status") == "waiting"]
+
+        team_candidates = []
+        for p in selected_parts:
+            c = self.service.candidate_for_member(p["rp_name"], p.get("discord_id"), req)
+            team_candidates.append(c)
+        remaining = dict(req)
+        for c in team_candidates:
+            for k in remaining:
+                remaining[k] = max(0, remaining[k] - c.values.get(k, 0))
+        chance = self.service.calculate_chance(req, team_candidates) if team_candidates else 0
+
+        participants = "\n".join(self.format_member_line(p, n, True) for n, p in enumerate(selected_parts)) or "> Пока никто не попал в топ-5"
+        waiting = "\n".join(self.format_member_line(p, n, False) for n, p in enumerate(waiting_parts)) or "> Нет желающих вне состава"
         left = "\n".join(f"• **{stat_name(k)}:** {v}" for k, v in remaining.items() if v > 0) or "Все требования закрыты"
+
+        status = contract["status"]
+        title_status = "⏱️ НАЧАТ" if status == "started" else "🟢 ОТКРЫТ"
+        timer_text = ""
+        if status == "started":
+            timer_text = f"\n\n**⏳ Осталось:** {self.format_end_timestamp(contract.get('ends_at'))}"
+
         embed = discord.Embed(
-            title=f"📑 Контракт #{contract_id}: {contract['title']}",
-            description=f"**Требования:**\n{format_requirements(req)}\n\n**Участники:**\n{participants}\n\n**Авто-шанс лучшего состава:** {chance}%\n\n**Нехватка:**\n{left}",
+            title=f"📑 Контракт #{contract_id}: {contract['title']} — {title_status}",
+            description=(
+                f"**Требования:**\n{format_requirements(req)}\n\n"
+                f"**👥 Участники / топ-5:**\n{participants}\n\n"
+                f"**📝 Желающие ниже топ-5:**\n{waiting}\n\n"
+                f"**Авто-шанс состава:** **{chance}%**\n\n"
+                f"**Нехватка:**\n{left}"
+                f"{timer_text}"
+            ),
             color=COLOR,
         )
         embed.add_field(name="Награда", value=f"{contract['reward_bills']} векс. / ${contract['reward_dollars']}", inline=True)
         embed.add_field(name="Время", value=format_duration(contract["duration_minutes"]), inline=True)
+        embed.add_field(name="Запись", value=f"Участников: **{len(selected_parts)}** | Желающих: **{len(waiting_parts)}**", inline=True)
         return embed
 
     async def publish_contract(self, contract_id: int):
-        channel = self.bot.get_channel(self.bot.settings.channel_contract_panel)
+        channel = self.bot.get_channel(self.bot.settings.channel_available_contracts)
         if channel:
             await channel.send(embed=self.contract_embed(contract_id), view=ContractActionView(self, contract_id))
 
     async def refresh_contract_message(self, message: discord.Message, contract_id: int):
         try:
-            await message.edit(embed=self.contract_embed(contract_id), view=ContractActionView(self, contract_id))
+            data = self.service.get_contract(contract_id)
+            view = StartedContractView(self, contract_id) if data and data[0]["status"] == "started" else ContractActionView(self, contract_id)
+            await message.edit(embed=self.contract_embed(contract_id), view=view)
         except Exception as exc:
             await self.admin_alert(f"Не удалось обновить embed контракта #{contract_id}: {exc}")
 
     async def finish_contract(self, i: discord.Interaction, contract_id: int, status: str):
         if not is_family_member(i.user, self.bot.settings.role_family):
-            return await i.response.send_message("❌ Завершать контракты может только Family", ephemeral=True)
+            return await i.response.send_message("❌ Завершать контракты может только Family", ephemeral=True, delete_after=12)
         self.service.close_contract(contract_id, i.user.id, status)
         text = "успех" if status == "success" else "провал"
-        await i.response.send_message(f"✅ Контракт `#{contract_id}` завершен. Статус: **{text}**", ephemeral=True)
+        await i.response.send_message(f"✅ Контракт `#{contract_id}` завершен. Статус: **{text}**", ephemeral=True, delete_after=12)
         try:
             await i.message.edit(view=None)
         except Exception:
