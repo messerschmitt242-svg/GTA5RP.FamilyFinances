@@ -211,6 +211,17 @@ class RewardModal(discord.ui.Modal, title="Награда и время"):
         await self.cog.publish_contract(cid)
 
 
+class RewardButtonView(discord.ui.View):
+    def __init__(self, cog: "ContractsCog", state: dict):
+        super().__init__(timeout=300)
+        self.cog = cog
+        self.state = state
+
+    @discord.ui.button(label="💰 Ввести награду и время", style=discord.ButtonStyle.green)
+    async def open_reward_modal(self, i: discord.Interaction, _):
+        await i.response.send_modal(RewardModal(self.cog, self.state))
+
+
 class SkillAmountModal(discord.ui.Modal, title="Количество очков"):
     amount = discord.ui.TextInput(label="Количество очков", placeholder="Введи число", max_length=3)
 
@@ -237,7 +248,13 @@ class SkillAmountModal(discord.ui.Modal, title="Количество очков"
             return await i.response.send_message(f"✅ У **{self.state['rp_name']}** обновлено: {stat_name(self.stat_key)} = {value}", ephemeral=True)
         if len(self.state["values"]) >= self.state["count"]:
             if self.state["type"] == "contract":
-                return await i.response.send_modal(RewardModal(self.cog, self.state))
+                text = (
+                    "✅ Все требования контракта добавлены.\n\n"
+                    f"**{self.state['title']}**\n"
+                    f"{format_requirements(self.state['values'])}\n\n"
+                    "Нажми кнопку ниже, чтобы ввести награду и время выполнения."
+                )
+                return await i.response.send_message(text, view=RewardButtonView(self.cog, self.state), ephemeral=True)
             self.cog.service.upsert_profile(self.state["rp_name"], None, self.state["discord_name"], self.state["values"])
             await self.cog.contract_log(f"<@{i.user.id}> добавил человека **{self.state['rp_name']}**\n{format_requirements(self.state['values'])}")
             return await i.response.send_message(f"✅ Человек **{self.state['rp_name']}** добавлен/обновлен.", ephemeral=True)
