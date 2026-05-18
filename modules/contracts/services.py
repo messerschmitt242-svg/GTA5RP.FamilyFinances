@@ -58,7 +58,32 @@ class ContractService:
         with self.db.connect() as conn:
             return conn.execute("SELECT rp_name, discord_id, discord_name FROM gta_profiles ORDER BY rp_name ASC LIMIT ?", (limit,)).fetchall()
 
-    def create_contract(self, title: str, created_by: int | str, requirements: dict[str, int], source: str = "manual", reward_bills: int = 0, reward_dollars: int = 0, duration_minutes: int = 0) -> int:
+    def link_guild_members(self, guild) -> int:
+        count = 0
+        from core.utils import extract_rp_name
+        with self.db.connect() as conn:
+            rows = conn.execute("SELECT rp_name FROM gta_profiles").fetchall()
+            known = {r["rp_name"].lower(): r["rp_name"] for r in rows}
+            for member in guild.members:
+                if member.bot:
+                    continue
+                rp = extract_rp_name(member.display_name)
+                original = known.get(rp.lower())
+                if original:
+                    conn.execute("UPDATE gta_profiles SET discord_id=?, discord_name=?, updated_at=NOW() WHERE rp_name=?", (str(member.id), member.display_name, original))
+                    count += 1
+        return count
+
+    def create_contract(
+        self,
+        title: str,
+        created_by: int | str,
+        requirements: dict[str, int],
+        source: str = "manual",
+        reward_bills: int = 0,
+        reward_dollars: int = 0,
+        duration_minutes: int = 0,
+    ) -> int:
         req = {k: max(0, int(v)) for k, v in requirements.items() if k in STAT_KEYS and int(v) > 0}
         with self.db.connect() as conn:
             row = conn.execute(
@@ -76,7 +101,7 @@ class ContractService:
 
     def list_open_contracts(self):
         with self.db.connect() as conn:
-            return conn.execute("SELECT id, title, status, reward_bills, reward_dollars, duration_minutes, created_at, started_at, ends_at FROM contracts WHERE status IN ('open','started') ORDER BY id DESC LIMIT 20").fetchall()
+            return conn.execute("SELECT id, title, status, reward_bills, reward_dollars, duration_minutes, created_at FROM contracts WHERE status='open' ORDER BY id DESC LIMIT 20").fetchall()
 
     def list_history_contracts(self, limit: int = 10):
         with self.db.connect() as conn:
@@ -97,80 +122,22 @@ class ContractService:
             if not contract:
                 return None
             req = conn.execute("SELECT stat_key, required_level FROM contract_requirements WHERE contract_id=?", (contract_id,)).fetchall()
-            parts = conn.execute("SELECT * FROM contract_participants WHERE contract_id=? ORDER BY queue_status ASC, score DESC, created_at ASC", (contract_id,)).fetchall()
+            parts = conn.execute("SELECT * FROM contract_participants WHERE contract_id=?", (contract_id,)).fetchall()
             return contract, {r["stat_key"]: int(r["required_level"]) for r in req}, parts
 
-    def candidate_for_member(self, rp_name: str, discord_id: int | str | None, requirements: dict[str, int]) -> Candidate:
-        select_cols = ", ".join(["rp_name", "discord_id", *STAT_KEYS])
-        row = None
-        with self.db.connect() as conn:
-            if discord_id:
-                row = conn.execute(f"SELECT {select_cols} FROM gta_profiles WHERE discord_id=?", (str(discord_id),)).fetchone()
-            if row is None:
-                row = conn.execute(f"SELECT {select_cols} FROM gta_profiles WHERE lower(rp_name)=lower(?)", (rp_name,)).fetchone()
-        if row is None:
-            return Candidate(rp_name, str(discord_id) if discord_id else None, 0, 0, {})
-        values = {k: int(row[k] or 0) for k in STAT_KEYS}
-        score = sum(min(values.get(k, 0), need) for k, need in requirements.items())
-        return Candidate(row["rp_name"], row["discord_id"], score, values.get("contractor", 0), values)
-
     def add_participant(self, contract_id: int, rp_name: str, discord_id: int | None, actor_id: int) -> None:
-        data = self.get_contract(contract_id)
-        if not data:
-            raise ValueError("Контракт не найден")
-        contract, req, _ = data
-        if contract["status"] != "open":
-            raise ValueError("Запись закрыта: контракт уже начат или завершен")
         self.upsert_profile(rp_name, discord_id, None, {})
-        candidate = self.candidate_for_member(rp_name, discord_id, req)
         with self.db.connect() as conn:
             conn.execute(
-                """
-                INSERT INTO contract_participants(contract_id, rp_name, discord_id, added_by, queue_status, score)
-                VALUES (?, ?, ?, ?, 'waiting', ?)
-                ON CONFLICT(contract_id, rp_name) DO UPDATE SET discord_id=EXCLUDED.discord_id, score=EXCLUDED.score
-                """,
-                (contract_id, candidate.rp_name, str(discord_id) if discord_id else candidate.discord_id, str(actor_id), int(candidate.score)),
+                "INSERT INTO contract_participants(contract_id, rp_name, discord_id, added_by) VALUES (?, ?, ?, ?) ON CONFLICT DO NOTHING",
+                (contract_id, rp_name, str(discord_id) if discord_id else None, str(actor_id)),
             )
-        self.rebalance_participants(contract_id)
-        self.log(contract_id, "participant_joined", actor_id, {"rp_name": candidate.rp_name, "score": candidate.score})
+        self.log(contract_id, "participant_added", actor_id, {"rp_name": rp_name})
 
     def remove_participant(self, contract_id: int, rp_name: str, actor_id: int) -> None:
         with self.db.connect() as conn:
             conn.execute("DELETE FROM contract_participants WHERE contract_id=? AND rp_name=?", (contract_id, rp_name))
-        self.rebalance_participants(contract_id)
         self.log(contract_id, "participant_removed", actor_id, {"rp_name": rp_name})
-
-    def rebalance_participants(self, contract_id: int, max_members: int = 5) -> None:
-        data = self.get_contract(contract_id)
-        if not data:
-            return
-        contract, req, parts = data
-        if contract["status"] != "open":
-            return
-        candidates = []
-        for p in parts:
-            c = self.candidate_for_member(p["rp_name"], p["discord_id"], req)
-            candidates.append((p["rp_name"], int(c.score), int(c.contractor)))
-        candidates.sort(key=lambda x: (x[1], x[2]), reverse=True)
-        selected = {rp for rp, _, _ in candidates[:max_members]}
-        with self.db.connect() as conn:
-            for rp, score, _ in candidates:
-                status = "selected" if rp in selected else "waiting"
-                conn.execute("UPDATE contract_participants SET queue_status=?, score=? WHERE contract_id=? AND rp_name=?", (status, score, contract_id, rp))
-
-    def promote_waiting(self, contract_id: int, actor_id: int | str) -> int:
-        with self.db.connect() as conn:
-            rows = conn.execute("SELECT rp_name FROM contract_participants WHERE contract_id=? AND queue_status='waiting'", (contract_id,)).fetchall()
-            conn.execute("UPDATE contract_participants SET queue_status='selected' WHERE contract_id=? AND queue_status='waiting'", (contract_id,))
-        count = len(rows)
-        self.log(contract_id, "waiting_promoted", actor_id, {"count": count})
-        return count
-
-    def start_contract(self, contract_id: int, actor_id: int | str) -> None:
-        with self.db.connect() as conn:
-            conn.execute("UPDATE contracts SET status='started', started_at=NOW(), ends_at=NOW() + (duration_minutes || ' minutes')::interval, updated_at=NOW() WHERE id=? AND status='open'", (contract_id,))
-        self.log(contract_id, "contract_started", actor_id)
 
     def close_contract(self, contract_id: int, actor_id: int, status: str) -> None:
         if status not in {"success", "failed"}:

@@ -36,7 +36,6 @@ class Settings:
     channel_contract_panel: int
     channel_contract_logs: int
     channel_admin_alerts: int
-    channel_available_contracts: int
 
     role_family: int
     role_wrestler: int
@@ -66,7 +65,6 @@ def load_settings() -> Settings:
         channel_contract_panel=_get_int("CHANNEL_CONTRACT_PANEL", 1505366731881975919, required=True),
         channel_contract_logs=_get_int("CHANNEL_CONTRACT_LOGS", 1505366841185406986, required=True),
         channel_admin_alerts=_get_int("CHANNEL_ADMIN_ALERTS", 1505366944235389040, required=True),
-        channel_available_contracts=_get_int("CHANNEL_AVAILABLE_CONTRACTS", _get_int("CHANNEL_CONTRACT_PANEL", 1505366731881975919), required=True),
         role_family=_get_int("ROLE_FAMILY", 1447314644141347008, required=True),
         role_wrestler=_get_int("ROLE_WRESTLER", 1447315536550559846, required=True),
         max_contract_members=_get_int("MAX_CONTRACT_MEMBERS", 5),

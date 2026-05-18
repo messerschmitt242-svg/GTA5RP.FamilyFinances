@@ -142,9 +142,7 @@ class Database:
                 panel_message_id TEXT,
                 reward_bills INTEGER NOT NULL DEFAULT 0 CHECK(reward_bills >= 0),
                 reward_dollars INTEGER NOT NULL DEFAULT 0 CHECK(reward_dollars >= 0),
-                duration_minutes INTEGER NOT NULL DEFAULT 0 CHECK(duration_minutes >= 0),
-                started_at TIMESTAMPTZ,
-                ends_at TIMESTAMPTZ
+                duration_minutes INTEGER NOT NULL DEFAULT 0 CHECK(duration_minutes >= 0)
             );
 
             CREATE TABLE IF NOT EXISTS contract_requirements (
@@ -160,8 +158,6 @@ class Database:
                 discord_id TEXT,
                 added_by TEXT NOT NULL,
                 created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-                queue_status TEXT NOT NULL DEFAULT 'selected',
-                score INTEGER NOT NULL DEFAULT 0,
                 PRIMARY KEY(contract_id, rp_name)
             );
 
@@ -177,10 +173,6 @@ class Database:
         conn.execute("ALTER TABLE contracts ADD COLUMN IF NOT EXISTS reward_bills INTEGER NOT NULL DEFAULT 0 CHECK(reward_bills >= 0)")
         conn.execute("ALTER TABLE contracts ADD COLUMN IF NOT EXISTS reward_dollars INTEGER NOT NULL DEFAULT 0 CHECK(reward_dollars >= 0)")
         conn.execute("ALTER TABLE contracts ADD COLUMN IF NOT EXISTS duration_minutes INTEGER NOT NULL DEFAULT 0 CHECK(duration_minutes >= 0)")
-        conn.execute("ALTER TABLE contracts ADD COLUMN IF NOT EXISTS started_at TIMESTAMPTZ")
-        conn.execute("ALTER TABLE contracts ADD COLUMN IF NOT EXISTS ends_at TIMESTAMPTZ")
-        conn.execute("ALTER TABLE contract_participants ADD COLUMN IF NOT EXISTS queue_status TEXT NOT NULL DEFAULT 'selected'")
-        conn.execute("ALTER TABLE contract_participants ADD COLUMN IF NOT EXISTS score INTEGER NOT NULL DEFAULT 0")
 
 
 CONTRACT_STAT_COLUMNS = [
