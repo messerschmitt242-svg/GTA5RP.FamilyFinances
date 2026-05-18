@@ -23,6 +23,10 @@ class CursorCompat:
         self.cursor = cursor
         self._columns: list[str] = []
 
+    @property
+    def rowcount(self) -> int:
+        return self.cursor.rowcount
+
     def execute(self, query: str, params: tuple[Any, ...] | list[Any] | None = None):
         query = query.replace("?", "%s")
         self.cursor.execute(query, params or ())
@@ -169,11 +173,7 @@ class Database:
                 reward_dollars INTEGER NOT NULL DEFAULT 0 CHECK(reward_dollars >= 0),
                 duration_minutes INTEGER NOT NULL DEFAULT 0 CHECK(duration_minutes >= 0),
                 available_message_id TEXT,
-                started_at TIMESTAMPTZ,
-                finished_at TIMESTAMPTZ,
-                completion_mode TEXT,
-                history_message_id TEXT,
-                result_message_id TEXT
+                started_at TIMESTAMPTZ
             );
 
             CREATE TABLE IF NOT EXISTS contract_requirements (
@@ -216,10 +216,6 @@ class Database:
 
         conn.execute("ALTER TABLE contracts ADD COLUMN IF NOT EXISTS available_message_id TEXT")
         conn.execute("ALTER TABLE contracts ADD COLUMN IF NOT EXISTS started_at TIMESTAMPTZ")
-        conn.execute("ALTER TABLE contracts ADD COLUMN IF NOT EXISTS finished_at TIMESTAMPTZ")
-        conn.execute("ALTER TABLE contracts ADD COLUMN IF NOT EXISTS completion_mode TEXT")
-        conn.execute("ALTER TABLE contracts ADD COLUMN IF NOT EXISTS history_message_id TEXT")
-        conn.execute("ALTER TABLE contracts ADD COLUMN IF NOT EXISTS result_message_id TEXT")
 
 
 CONTRACT_STAT_COLUMNS = [
