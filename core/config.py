@@ -30,6 +30,7 @@ class Settings:
     car_channel: int
     car_admin_channel: int
     bp_channel: int
+    channel_music: int
 
     database_url: str
 
@@ -63,6 +64,7 @@ def load_settings() -> Settings:
         car_channel=_get_int("CAR_CHANNEL", 1447638380933546096, required=True),
         car_admin_channel=_get_int("CAR_ADMIN_CHANNEL", 1503869045974368346, required=True),
         bp_channel=_get_int("BP_CHANNEL", 1497992598504214638, required=True),
+        channel_music=_get_int("CHANNEL_MUSIC", 0, required=True),
         database_url=os.getenv("DATABASE_URL", os.getenv("DATABASE_PATH", "postgresql://postgres:postgres@localhost:5432/postgres")),
         channel_contract_panel=_get_int("CHANNEL_CONTRACT_PANEL", 1505366731881975919, required=True),
         channel_contract_logs=_get_int("CHANNEL_CONTRACT_LOGS", 1505366841185406986, required=True),

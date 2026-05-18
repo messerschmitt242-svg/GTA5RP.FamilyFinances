@@ -20,6 +20,22 @@ class MusicCog(commands.Cog):
         self.bot = bot
         self.service = MusicService(bot)
 
+    async def _ensure_music_channel(self, interaction: discord.Interaction) -> bool:
+        allowed_channel = getattr(self.bot.settings, "channel_music", 0)
+        current_channel = getattr(interaction, "channel_id", None)
+
+        if allowed_channel and current_channel != allowed_channel:
+            await interaction.response.send_message(
+                embed=warn_embed(
+                    "Не тот канал",
+                    f"Музыкальные команды доступны только в <#{allowed_channel}>."
+                ),
+                ephemeral=True,
+            )
+            return False
+
+        return True
+
     async def cog_load(self) -> None:
         self.bot.add_view(MusicControlView())
         await self.service.start()
@@ -31,6 +47,9 @@ class MusicCog(commands.Cog):
 
     @music.command(name="panel", description="Создать панель управления музыкой")
     async def panel(self, interaction: discord.Interaction):
+        if not await self._ensure_music_channel(interaction):
+            return
+
         embed = discord.Embed(
             title="🎵 Музыкальная система",
             description=(
@@ -48,6 +67,9 @@ class MusicCog(commands.Cog):
 
     @music.command(name="status", description="Проверить статус музыкального сервера")
     async def status(self, interaction: discord.Interaction):
+        if not await self._ensure_music_channel(interaction):
+            return
+
         online = await self.service.ensure_online()
         if online:
             await interaction.response.send_message(embed=ok_embed("Lavalink доступен", "Музыкальная система готова."), ephemeral=True)
@@ -57,6 +79,9 @@ class MusicCog(commands.Cog):
     @music.command(name="play", description="Включить трек или добавить его в очередь")
     @app_commands.describe(query="Название трека или ссылка")
     async def play(self, interaction: discord.Interaction, query: str):
+        if not await self._ensure_music_channel(interaction):
+            return
+
         await interaction.response.defer(thinking=True)
         try:
             result = await self.service.play_or_queue(interaction, query)
@@ -85,6 +110,9 @@ class MusicCog(commands.Cog):
 
     @music.command(name="pause", description="Поставить музыку на паузу")
     async def pause(self, interaction: discord.Interaction):
+        if not await self._ensure_music_channel(interaction):
+            return
+
         player = interaction.guild.voice_client if interaction.guild else None
         if not player:
             await interaction.response.send_message(embed=warn_embed("Музыка не играет"), ephemeral=True)
@@ -94,6 +122,9 @@ class MusicCog(commands.Cog):
 
     @music.command(name="resume", description="Продолжить музыку")
     async def resume(self, interaction: discord.Interaction):
+        if not await self._ensure_music_channel(interaction):
+            return
+
         player = interaction.guild.voice_client if interaction.guild else None
         if not player:
             await interaction.response.send_message(embed=warn_embed("Музыка не играет"), ephemeral=True)
@@ -103,6 +134,9 @@ class MusicCog(commands.Cog):
 
     @music.command(name="skip", description="Пропустить текущий трек")
     async def skip(self, interaction: discord.Interaction):
+        if not await self._ensure_music_channel(interaction):
+            return
+
         player = interaction.guild.voice_client if interaction.guild else None
         if not player:
             await interaction.response.send_message(embed=warn_embed("Музыка не играет"), ephemeral=True)
@@ -112,6 +146,9 @@ class MusicCog(commands.Cog):
 
     @music.command(name="stop", description="Остановить музыку и очистить очередь")
     async def stop(self, interaction: discord.Interaction):
+        if not await self._ensure_music_channel(interaction):
+            return
+
         player = interaction.guild.voice_client if interaction.guild else None
         if not player:
             await interaction.response.send_message(embed=warn_embed("Музыка не играет"), ephemeral=True)
@@ -125,6 +162,9 @@ class MusicCog(commands.Cog):
 
     @music.command(name="queue", description="Показать очередь")
     async def queue(self, interaction: discord.Interaction):
+        if not await self._ensure_music_channel(interaction):
+            return
+
         player = interaction.guild.voice_client if interaction.guild else None
         if not player:
             await interaction.response.send_message(embed=warn_embed("Очередь пуста", "Бот не подключен к голосовому каналу."), ephemeral=True)
@@ -133,6 +173,9 @@ class MusicCog(commands.Cog):
 
     @music.command(name="now", description="Показать текущий трек")
     async def now(self, interaction: discord.Interaction):
+        if not await self._ensure_music_channel(interaction):
+            return
+
         player = interaction.guild.voice_client if interaction.guild else None
         if not player or not getattr(player, "current", None):
             await interaction.response.send_message(embed=warn_embed("Сейчас ничего не играет"), ephemeral=True)
@@ -142,6 +185,9 @@ class MusicCog(commands.Cog):
     @music.command(name="volume", description="Изменить громкость")
     @app_commands.describe(value=f"Громкость от 1 до {MUSIC_MAX_VOLUME}")
     async def volume(self, interaction: discord.Interaction, value: app_commands.Range[int, 1, MUSIC_MAX_VOLUME]):
+        if not await self._ensure_music_channel(interaction):
+            return
+
         player = interaction.guild.voice_client if interaction.guild else None
         if not player:
             await interaction.response.send_message(embed=warn_embed("Музыка не играет"), ephemeral=True)

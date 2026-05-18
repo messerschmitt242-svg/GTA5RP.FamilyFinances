@@ -9,7 +9,26 @@ class MusicControlView(discord.ui.View):
     def __init__(self):
         super().__init__(timeout=None)
 
+    async def _ensure_music_channel(self, interaction: discord.Interaction) -> bool:
+        allowed_channel = getattr(getattr(interaction.client, "settings", None), "channel_music", 0)
+        current_channel = getattr(interaction, "channel_id", None)
+
+        if allowed_channel and current_channel != allowed_channel:
+            await interaction.response.send_message(
+                embed=warn_embed(
+                    "Не тот канал",
+                    f"Музыкальная панель доступна только в <#{allowed_channel}>."
+                ),
+                ephemeral=True,
+            )
+            return False
+
+        return True
+
     async def _player(self, interaction: discord.Interaction):
+        if not await self._ensure_music_channel(interaction):
+            return None
+
         if not interaction.guild or not interaction.guild.voice_client:
             await interaction.response.send_message(embed=warn_embed("Музыка не играет", "Бот сейчас не подключен к голосовому каналу."), ephemeral=True)
             return None
