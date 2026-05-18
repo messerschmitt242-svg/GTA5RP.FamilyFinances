@@ -1,4 +1,5 @@
 from datetime import datetime
+import traceback
 import discord
 from discord import app_commands
 from discord.ext import commands
@@ -101,7 +102,8 @@ class AvailableSingleCarView(discord.ui.View):
                 view=None,
             )
         except Exception as exc:
-            print(f"CAR TAKE ERROR: {exc}")
+            print(f"CAR TAKE ERROR: {exc}", flush=True)
+            traceback.print_exc()
             await i.edit_original_response(
                 content="❌ Ошибка при бронировании автомобиля. Проверьте логи Railway.",
                 embed=None,
@@ -129,7 +131,8 @@ class TakenSingleCarView(discord.ui.View):
                 view=None,
             )
         except Exception as exc:
-            print(f"CAR RETURN ERROR: {exc}")
+            print(f"CAR RETURN ERROR: {exc}", flush=True)
+            traceback.print_exc()
             await i.edit_original_response(
                 content="❌ Ошибка при возврате автомобиля. Проверьте логи Railway.",
                 embed=None,
