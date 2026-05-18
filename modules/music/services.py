@@ -140,62 +140,113 @@ class MusicService:
         except TypeError:
             return [result]
 
-    def _track_source(self, name: str):
-        """Return Wavelink TrackSource enum when available, otherwise prefix string."""
-        source_enum = getattr(wavelink, "TrackSource", None)
-        if source_enum is not None:
-            value = getattr(source_enum, name, None)
-            if value is not None:
-                return value
+    def _is_url(self, query: str) -> bool:
+        return query.startswith(("http://", "https://"))
 
-        fallback = {
-            "SoundCloud": "scsearch",
-            "YouTube": "ytsearch",
-            "YouTubeMusic": "ytmsearch",
-        }
-        return fallback.get(name)
+    def _is_youtube_url(self, query: str) -> bool:
+        q = query.lower()
+        return "youtube.com" in q or "youtu.be" in q
 
-    async def _search_one(self, query: str, source):
-        """Search with Wavelink 3 source API. Falls back to old prefix style if needed."""
-        if source is None:
-            result = await wavelink.Playable.search(query, source=None)
-            return self._normalize_search_result(result)
+    def _youtube_url_variants(self, query: str) -> list[str]:
+        """Return safer YouTube URL variants.
 
+        YouTube links with playlist params often fail harder in Lavalink, for example:
+        https://youtu.be/v2AC41dglnM?list=RDv2AC41dglnM
+
+        We try the clean video URL as well.
+        """
+        from urllib.parse import parse_qs, urlparse
+
+        variants = [query]
         try:
-            result = await wavelink.Playable.search(query, source=source)
-            return self._normalize_search_result(result)
-        except TypeError:
-            # Compatibility fallback for older Wavelink signatures.
-            prefix = str(source).strip(":")
-            result = await wavelink.Playable.search(f"{prefix}:{query}")
-            return self._normalize_search_result(result)
+            parsed = urlparse(query)
+            host = parsed.netloc.lower()
+            video_id = ""
+
+            if "youtu.be" in host:
+                video_id = parsed.path.strip("/").split("/")[0]
+            elif "youtube.com" in host:
+                qs = parse_qs(parsed.query)
+                video_id = (qs.get("v") or [""])[0]
+
+            if video_id:
+                variants.append(f"https://www.youtube.com/watch?v={video_id}")
+                variants.append(f"https://youtu.be/{video_id}")
+        except Exception:
+            pass
+
+        # Deduplicate while keeping order.
+        out: list[str] = []
+        seen: set[str] = set()
+        for item in variants:
+            if item and item not in seen:
+                out.append(item)
+                seen.add(item)
+        return out
+
+    def _strip_known_prefix(self, query: str) -> str:
+        lowered = query.lower()
+        for prefix in ("scsearch:", "ytsearch:", "ytmsearch:"):
+            if lowered.startswith(prefix):
+                return query[len(prefix):].strip()
+        return query.strip()
+
+    async def _search_raw(self, query: str):
+        result = await wavelink.Playable.search(query)
+        return self._normalize_search_result(result)
+
+    async def _search_prefixed(self, prefix: str, query: str):
+        query = self._strip_known_prefix(query)
+        if not query:
+            return []
+        return await self._search_raw(f"{prefix}:{query}")
 
     async def search_tracks(self, query: str):
         query = query.strip()
         if not query:
             return []
 
-        # URLs must be resolved directly without adding search prefixes.
-        if query.startswith(("http://", "https://")):
-            try:
-                return await self._search_one(query, None)
-            except Exception as exc:
-                log.warning("Direct URL load failed for %s: %s", query, exc, exc_info=True)
-                raise
+        # URLs are resolved directly. For YouTube we try clean URL variants because
+        # links with playlist/list params often fail in Lavalink/youtube-source.
+        if self._is_url(query):
+            url_variants = self._youtube_url_variants(query) if self._is_youtube_url(query) else [query]
+            last_exc: Optional[Exception] = None
 
-        # SoundCloud-first for stability, then YouTube, then YouTube Music.
-        sources = [
-            ("SoundCloud", self._track_source("SoundCloud")),
-            ("YouTube", self._track_source("YouTube")),
-            ("YouTubeMusic", self._track_source("YouTubeMusic")),
+            for url in url_variants:
+                try:
+                    tracks = await self._search_raw(url)
+                    if tracks:
+                        return tracks
+                except Exception as exc:
+                    last_exc = exc
+                    log.warning("Direct URL load failed for %s: %s", url, exc, exc_info=True)
+
+            # Do not try fake SoundCloud search by video id: it gives garbage results.
+            # The user should use a track title if YouTube direct loading is blocked.
+            if last_exc:
+                raise last_exc
+            return []
+
+        # Explicit user prefixes are supported.
+        lowered = query.lower()
+        if lowered.startswith("scsearch:"):
+            return await self._search_prefixed("scsearch", query)
+        if lowered.startswith("ytsearch:"):
+            return await self._search_prefixed("ytsearch", query)
+        if lowered.startswith("ytmsearch:"):
+            return await self._search_prefixed("ytmsearch", query)
+
+        # SoundCloud-first for stability. YouTube is fallback only.
+        searches = [
+            ("SoundCloud", "scsearch"),
+            ("YouTube", "ytsearch"),
+            ("YouTubeMusic", "ytmsearch"),
         ]
 
         last_exc: Optional[Exception] = None
-        for source_name, source in sources:
-            if source is None:
-                continue
+        for source_name, prefix in searches:
             try:
-                tracks = await self._search_one(query, source)
+                tracks = await self._search_prefixed(prefix, query)
                 if tracks:
                     log.info("Music search success: source=%s query=%s results=%s", source_name, query, len(tracks))
                     return tracks
