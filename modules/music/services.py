@@ -111,15 +111,42 @@ class MusicService:
 
         if current_client:
             player = current_client  # type: ignore[assignment]
-            if getattr(player, "channel", None) and player.channel.id != target_channel.id:
-                # One bot cannot play in two channels of the same server simultaneously.
-                raise RuntimeError(
-                    f"Бот уже используется в голосовом канале: {player.channel.mention}. "
-                    f"Останови музыку там или зайди в тот же канал."
-                )
-            return player  # type: ignore[return-value]
 
-        player: wavelink.Player = await target_channel.connect(cls=wavelink.Player)  # type: ignore[assignment]
+            # Иногда после кика/редеплоя Discord оставляет zombie voice state:
+            # бот визуально был в канале, но Wavelink уже не дождался VOICE_SERVER_UPDATE.
+            # Если клиент выглядит мертвым, аккуратно чистим его и подключаемся заново.
+            try:
+                is_connected = player.is_connected() if hasattr(player, "is_connected") else True
+            except Exception:
+                is_connected = True
+
+            if not is_connected:
+                try:
+                    await player.disconnect(force=True)
+                except TypeError:
+                    await player.disconnect()
+                except Exception:
+                    pass
+                current_client = None
+            else:
+                if getattr(player, "channel", None) and player.channel.id != target_channel.id:
+                    # One bot cannot play in two channels of the same server simultaneously.
+                    raise RuntimeError(
+                        f"Бот уже используется в голосовом канале: {player.channel.mention}. "
+                        f"Останови музыку там или зайди в тот же канал."
+                    )
+                return player  # type: ignore[return-value]
+
+        # Важные параметры для Railway/Discord Voice:
+        # - timeout увеличен до 75 секунд, потому что 30 секунд часто не хватает после redeploy;
+        # - reconnect=True разрешает библиотеке добить voice-handshake;
+        # - self_deaf=True снижает лишнюю voice-нагрузку и не требует слушать канал.
+        player: wavelink.Player = await target_channel.connect(
+            cls=wavelink.Player,
+            timeout=75.0,
+            reconnect=True,
+            self_deaf=True,
+        )  # type: ignore[assignment]
         try:
             await player.set_volume(MUSIC_DEFAULT_VOLUME)
         except Exception:
@@ -259,13 +286,19 @@ class MusicService:
         return []
 
     async def play_or_queue(self, interaction: discord.Interaction, query: str):
-        player = await self.get_or_connect_player(interaction)
-        if player is None:
+        # Сначала ищем трек, потом подключаемся к voice.
+        # Так бот не прыгает в канал и обратно, если YouTube/SoundCloud не отдали трек.
+        user = interaction.user
+        if not isinstance(user, discord.Member) or not user.voice or not user.voice.channel:
             return None, "NO_PLAYER"
 
         tracks = await self.search_tracks(query)
         if not tracks:
-            return player, "NO_TRACKS"
+            return None, "NO_TRACKS"
+
+        player = await self.get_or_connect_player(interaction)
+        if player is None:
+            return None, "NO_PLAYER"
 
         track = tracks[0]
         try:
