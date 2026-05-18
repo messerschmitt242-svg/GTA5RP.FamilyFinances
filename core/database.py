@@ -142,7 +142,9 @@ class Database:
                 panel_message_id TEXT,
                 reward_bills INTEGER NOT NULL DEFAULT 0 CHECK(reward_bills >= 0),
                 reward_dollars INTEGER NOT NULL DEFAULT 0 CHECK(reward_dollars >= 0),
-                duration_minutes INTEGER NOT NULL DEFAULT 0 CHECK(duration_minutes >= 0)
+                duration_minutes INTEGER NOT NULL DEFAULT 0 CHECK(duration_minutes >= 0),
+                available_message_id TEXT,
+                started_at TIMESTAMPTZ
             );
 
             CREATE TABLE IF NOT EXISTS contract_requirements (
@@ -153,6 +155,15 @@ class Database:
             );
 
             CREATE TABLE IF NOT EXISTS contract_participants (
+                contract_id BIGINT NOT NULL REFERENCES contracts(id) ON DELETE CASCADE,
+                rp_name TEXT NOT NULL REFERENCES gta_profiles(rp_name) ON DELETE CASCADE,
+                discord_id TEXT,
+                added_by TEXT NOT NULL,
+                created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                PRIMARY KEY(contract_id, rp_name)
+            );
+
+            CREATE TABLE IF NOT EXISTS contract_waitlist (
                 contract_id BIGINT NOT NULL REFERENCES contracts(id) ON DELETE CASCADE,
                 rp_name TEXT NOT NULL REFERENCES gta_profiles(rp_name) ON DELETE CASCADE,
                 discord_id TEXT,
@@ -173,6 +184,9 @@ class Database:
         conn.execute("ALTER TABLE contracts ADD COLUMN IF NOT EXISTS reward_bills INTEGER NOT NULL DEFAULT 0 CHECK(reward_bills >= 0)")
         conn.execute("ALTER TABLE contracts ADD COLUMN IF NOT EXISTS reward_dollars INTEGER NOT NULL DEFAULT 0 CHECK(reward_dollars >= 0)")
         conn.execute("ALTER TABLE contracts ADD COLUMN IF NOT EXISTS duration_minutes INTEGER NOT NULL DEFAULT 0 CHECK(duration_minutes >= 0)")
+
+        conn.execute("ALTER TABLE contracts ADD COLUMN IF NOT EXISTS available_message_id TEXT")
+        conn.execute("ALTER TABLE contracts ADD COLUMN IF NOT EXISTS started_at TIMESTAMPTZ")
 
 
 CONTRACT_STAT_COLUMNS = [

@@ -1,12 +1,14 @@
 from __future__ import annotations
+
 import asyncio
-import aiosqlite
+from datetime import datetime, timedelta, timezone
+
 import discord
 from discord.ext import commands
 
 from core.utils import extract_rp_name, has_any_role, has_role, safe_pin
 from modules.contracts.services import ContractService, format_duration, format_requirements
-from modules.skills.constants import ALL_STATS, CLUBS, RANKS, SKILLS, STAT_BY_KEY, STAT_KEYS, stat_name
+from modules.skills.constants import CLUBS, RANKS, SKILLS, stat_name
 
 COLOR = discord.Color.from_rgb(255, 148, 36)
 CATEGORY_ITEMS = {"skills": SKILLS, "ranks": RANKS, "clubs": CLUBS}
@@ -52,6 +54,24 @@ def parse_time_to_minutes(raw: str) -> int | None:
     return h * 60 + m
 
 
+def parse_pg_datetime(value):
+    if value is None:
+        return None
+    if isinstance(value, datetime):
+        return value if value.tzinfo else value.replace(tzinfo=timezone.utc)
+    try:
+        text = str(value).replace("Z", "+00:00")
+        dt = datetime.fromisoformat(text)
+        return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
+    except Exception:
+        return None
+
+
+def member_line(row) -> str:
+    mention = f"<@{row['discord_id']}>" if row.get("discord_id") else "без тега"
+    return f"> 🔸 **{row['rp_name']}** — {mention}"
+
+
 class ContractPanel(discord.ui.View):
     def __init__(self, cog: "ContractsCog"):
         super().__init__(timeout=None)
@@ -85,7 +105,7 @@ class ContractPanel(discord.ui.View):
             desc = "Активных контрактов нет"
         else:
             desc = "\n\n".join(
-                f"`#{r['id']}` — **{r['title']}**\n"
+                f"`#{r['id']}` — **{r['title']}** ({'идёт' if r['status']=='started' else 'набор'})\n"
                 f"Награда: {r['reward_bills']} векс. / ${r['reward_dollars']} | Время: {format_duration(r['duration_minutes'])}"
                 for r in rows
             )
@@ -108,18 +128,22 @@ class ContractPanel(discord.ui.View):
 
 
 class ContractActionView(discord.ui.View):
-    def __init__(self, cog: "ContractsCog", contract_id: int):
+    def __init__(self, cog: "ContractsCog", contract_id: int, started: bool = False):
         super().__init__(timeout=None)
         self.cog = cog
         self.contract_id = contract_id
+        if started:
+            for child in list(self.children):
+                if getattr(child, "custom_id", "") in {"contract_join", "contract_leave", "contract_suggest", "contract_promote", "contract_start"}:
+                    self.remove_item(child)
 
     @discord.ui.button(label="✅ Участвовать", style=discord.ButtonStyle.green, custom_id="contract_join")
     async def join(self, i: discord.Interaction, _):
         if not can_participate(i.user, self.cog.bot.settings.role_family, self.cog.bot.settings.role_wrestler):
             return await i.response.send_message("❌ Участвовать могут Family или Wrestler", ephemeral=True)
         rp = extract_rp_name(i.user.display_name)
-        self.cog.service.add_participant(self.contract_id, rp, i.user.id, i.user.id)
-        await i.response.send_message(f"✅ Ты записан на контракт `#{self.contract_id}` как **{rp}**", ephemeral=True)
+        self.cog.service.add_participant(self.contract_id, rp, i.user.id, i.user.id, self.cog.bot.settings.max_contract_members)
+        await i.response.send_message(f"✅ Ты записан на контракт `#{self.contract_id}` как **{rp}**. Система пересчитала топ-5.", ephemeral=True)
         await self.cog.refresh_contract_message(i.message, self.contract_id)
 
     @discord.ui.button(label="🚪 Выйти", style=discord.ButtonStyle.gray, custom_id="contract_leave")
@@ -134,11 +158,27 @@ class ContractActionView(discord.ui.View):
         data = self.cog.service.get_contract(self.contract_id)
         if not data:
             return await i.response.send_message("❌ Контракт не найден", ephemeral=True)
-        _, req, _ = data
+        _, req, _, _ = data
         team, remaining, chance = self.cog.service.suggest_team(req, self.cog.bot.settings.max_contract_members)
         desc = "\n".join(f"{n+1}. **{c.rp_name}** — вклад {c.score}, Подрядчик {c.contractor}" for n, c in enumerate(team)) or "Нет подходящих игроков"
         left = "\n".join(f"• {stat_name(k)}: {v}" for k, v in remaining.items() if v > 0) or "Все требования закрыты"
         await i.response.send_message(embed=discord.Embed(title=f"🧠 Подбор состава #{self.contract_id}", description=f"{desc}\n\n**Шанс:** {chance}%\n\n**Остаток:**\n{left}", color=COLOR), ephemeral=True)
+
+    @discord.ui.button(label="➕ Добавить желающих", style=discord.ButtonStyle.blurple, custom_id="contract_promote")
+    async def promote(self, i: discord.Interaction, _):
+        if not is_family_member(i.user, self.cog.bot.settings.role_family):
+            return await i.response.send_message("❌ Добавлять желающих может только Family", ephemeral=True)
+        moved = self.cog.service.promote_waitlist(self.contract_id, i.user.id, self.cog.bot.settings.max_contract_members)
+        await i.response.send_message(f"✅ Добавлено из желающих: **{moved}**", ephemeral=True)
+        await self.cog.refresh_contract_message(i.message, self.contract_id)
+
+    @discord.ui.button(label="▶️ Начать контракт", style=discord.ButtonStyle.green, custom_id="contract_start")
+    async def start_contract(self, i: discord.Interaction, _):
+        if not is_family_member(i.user, self.cog.bot.settings.role_family):
+            return await i.response.send_message("❌ Начать контракт может только Family", ephemeral=True)
+        self.cog.service.start_contract(self.contract_id, i.user.id)
+        await i.response.send_message(f"▶️ Контракт `#{self.contract_id}` начат. Таймер запущен.", ephemeral=True)
+        await self.cog.refresh_contract_message(i.message, self.contract_id)
 
     @discord.ui.button(label="🏁 Успех", style=discord.ButtonStyle.red, custom_id="contract_success")
     async def success(self, i: discord.Interaction, _):
@@ -324,22 +364,17 @@ class ContractsCog(commands.Cog):
             title="📑 СИСТЕМА КОНТРАКТОВ WAYNE INC.",
             description=(
                 "```fix\nGTA5RP CONTRACTS MANAGER\n```\n"
-                "• Добавить контракт — название, количество требований, выбор навыков/рангов/клубов, награды и время.\n"
-                "• Добавить человека — Discord ник, игровой ник и прокачанные навыки с лимитами.\n"
-                "• Редактировать навык — выбрать игрока, выбрать навык/ранг/клуб, вписать новое число.\n"
-                "• Активные — список открытых контрактов.\n"
-                "• История контрактов — 10 последних завершенных контрактов со статусом успех/провал."
+                "• Добавить контракт — создание требований, наград и времени.\n"
+                "• Контракты публикуются в CHANNEL_AVAILABLE_CONTRACTS.\n"
+                "• Участники — топ-5, остальные попадают в желающие.\n"
+                "• Начать контракт — запускает таймер и скрывает кнопки набора."
             ),
             color=COLOR,
         )
 
     async def find_existing_panel_message(self, channel: discord.abc.Messageable) -> discord.Message | None:
         async for message in channel.history(limit=50):
-            if message.author.id != self.bot.user.id:
-                continue
-            if not message.embeds:
-                continue
-            if message.embeds[0].title == "📑 СИСТЕМА КОНТРАКТОВ WAYNE INC.":
+            if message.author.id == self.bot.user.id and message.embeds and message.embeds[0].title == "📑 СИСТЕМА КОНТРАКТОВ WAYNE INC.":
                 return message
         return None
 
@@ -367,27 +402,39 @@ class ContractsCog(commands.Cog):
         data = self.service.get_contract(contract_id)
         if not data:
             return discord.Embed(title="❌ Контракт не найден", color=discord.Color.red())
-        contract, req, parts = data
+        contract, req, parts, wait = data
         team, remaining, chance = self.service.suggest_team(req, self.bot.settings.max_contract_members)
-        participants = "\n".join(f"• **{p['rp_name']}**" for p in parts) or "Пока никто не записался"
+        participants = "\n".join(member_line(p) for p in parts) or "Пока никто не записался"
+        waitlist = "\n".join(member_line(p) for p in wait) or "Пусто"
         left = "\n".join(f"• **{stat_name(k)}:** {v}" for k, v in remaining.items() if v > 0) or "Все требования закрыты"
-        embed = discord.Embed(
-            title=f"📑 Контракт #{contract_id}: {contract['title']}",
-            description=f"**Требования:**\n{format_requirements(req)}\n\n**Участники:**\n{participants}\n\n**Авто-шанс лучшего состава:** {chance}%\n\n**Нехватка:**\n{left}",
-            color=COLOR,
-        )
+        status = contract["status"]
+        desc = f"**Требования:**\n{format_requirements(req)}\n\n**👥 Участники / топ-{self.bot.settings.max_contract_members}:**\n{participants}\n\n**🙋 Желающие:**\n{waitlist}\n\n**Авто-шанс лучшего состава:** {chance}%\n\n**Нехватка:**\n{left}"
+        if status == "started":
+            started_at = parse_pg_datetime(contract.get("started_at"))
+            if started_at and int(contract["duration_minutes"] or 0) > 0:
+                end_at = started_at + timedelta(minutes=int(contract["duration_minutes"]))
+                desc += f"\n\n▶️ **Контракт начат**\n⏳ Окончание: <t:{int(end_at.timestamp())}:R> / <t:{int(end_at.timestamp())}:T>"
+            else:
+                desc += "\n\n▶️ **Контракт начат**"
+        embed = discord.Embed(title=f"📑 Контракт #{contract_id}: {contract['title']}", description=desc, color=COLOR)
+        embed.add_field(name="Статус", value="▶️ идёт" if status == "started" else "🟢 набор", inline=True)
         embed.add_field(name="Награда", value=f"{contract['reward_bills']} векс. / ${contract['reward_dollars']}", inline=True)
         embed.add_field(name="Время", value=format_duration(contract["duration_minutes"]), inline=True)
         return embed
 
     async def publish_contract(self, contract_id: int):
-        channel = self.bot.get_channel(self.bot.settings.channel_contract_panel)
-        if channel:
-            await channel.send(embed=self.contract_embed(contract_id), view=ContractActionView(self, contract_id))
+        channel = self.bot.get_channel(self.bot.settings.channel_available_contracts)
+        if not channel:
+            await self.admin_alert("CHANNEL_AVAILABLE_CONTRACTS не найден. Проверь переменную окружения и права бота.")
+            return
+        msg = await channel.send(embed=self.contract_embed(contract_id), view=ContractActionView(self, contract_id))
+        self.service.set_available_message_id(contract_id, msg.id)
 
     async def refresh_contract_message(self, message: discord.Message, contract_id: int):
+        data = self.service.get_contract(contract_id)
+        started = bool(data and data[0]["status"] == "started")
         try:
-            await message.edit(embed=self.contract_embed(contract_id), view=ContractActionView(self, contract_id))
+            await message.edit(embed=self.contract_embed(contract_id), view=ContractActionView(self, contract_id, started=started))
         except Exception as exc:
             await self.admin_alert(f"Не удалось обновить embed контракта #{contract_id}: {exc}")
 
@@ -398,7 +445,7 @@ class ContractsCog(commands.Cog):
         text = "успех" if status == "success" else "провал"
         await i.response.send_message(f"✅ Контракт `#{contract_id}` завершен. Статус: **{text}**", ephemeral=True)
         try:
-            await i.message.edit(view=None)
+            await i.message.edit(embed=self.contract_embed(contract_id), view=None)
         except Exception:
             pass
 
@@ -412,62 +459,31 @@ class ContractsCog(commands.Cog):
         if channel:
             await channel.send(f"⚠️ {text}")
 
-
     @commands.command(name="contracts_wipe")
     @commands.has_permissions(administrator=True)
-    async def contracts_wipe(self, ctx):
-
+    async def contracts_wipe(self, ctx: commands.Context):
         if ctx.channel.id != self.bot.settings.channel_admin_alerts:
-            return await ctx.reply(
-                "❌ Команду можно использовать только в admin alerts.",
-                delete_after=10
-            )
+            return await ctx.reply("❌ Команду можно использовать только в CHANNEL_ADMIN_ALERTS.", delete_after=10)
 
-        confirm_embed = discord.Embed(
-            title="⚠ Полная очистка контрактов",
-            description=(
-                "Будут удалены:\n"
-                "• все контракты\n"
-                "• история контрактов\n"
-                "• участники\n"
-                "• желающие\n\n"
-                "Напишите:\n"
-                "`CONFIRM WIPE`"
+        await ctx.send(
+            embed=discord.Embed(
+                title="⚠ Полная очистка контрактов",
+                description="Будут удалены все контракты, требования, участники, желающие и история.\n\nДля подтверждения напиши: `CONFIRM WIPE`",
+                color=discord.Color.red(),
             ),
-            color=discord.Color.red()
+            delete_after=60,
         )
 
-        await ctx.send(embed=confirm_embed, delete_after=60)
-
-        def check(m):
-            return (
-                m.author == ctx.author
-                and m.channel == ctx.channel
-                and m.content == "CONFIRM WIPE"
-            )
+        def check(m: discord.Message):
+            return m.author == ctx.author and m.channel == ctx.channel and m.content == "CONFIRM WIPE"
 
         try:
             await self.bot.wait_for("message", timeout=30, check=check)
         except asyncio.TimeoutError:
-            return await ctx.send(
-                "⌛ Очистка отменена.",
-                delete_after=10
-            )
+            return await ctx.send("⌛ Очистка отменена.", delete_after=10)
 
-        async with aiosqlite.connect(self.bot.settings.database_path) as db:
-
-            await db.execute("DELETE FROM contracts")
-            await db.execute("DELETE FROM contract_participants")
-            await db.execute("DELETE FROM contract_waitlist")
-            await db.execute("DELETE FROM contract_history")
-            await db.execute("DELETE FROM sqlite_sequence WHERE name='contracts'")
-
-            await db.commit()
-
-        await ctx.send(
-            "✅ База контрактов полностью очищена.",
-            delete_after=15
-        )
+        self.service.wipe_contracts(ctx.author.id)
+        await ctx.send("✅ База контрактов полностью очищена.", delete_after=15)
 
 
 async def setup(bot):
