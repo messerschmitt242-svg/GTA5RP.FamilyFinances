@@ -117,6 +117,28 @@ class Database:
                 );
             """)
             self.init_contracts_schema(conn)
+            self.sync_sequences(conn)
+
+
+    def sync_sequences(self, conn) -> None:
+        """Keep BIGSERIAL sequences in sync after imports/manual DB edits."""
+        tables = (
+            ("bank_logs", "id"),
+            ("cars", "id"),
+            ("car_logs", "id"),
+            ("contracts", "id"),
+            ("contract_history", "id"),
+        )
+        for table, column in tables:
+            conn.execute(
+                f"""
+                SELECT setval(
+                    pg_get_serial_sequence('{table}', '{column}'),
+                    GREATEST(COALESCE((SELECT MAX({column}) FROM {table}), 0), 1),
+                    COALESCE((SELECT MAX({column}) FROM {table}), 0) > 0
+                );
+                """
+            )
 
     def init_contracts_schema(self, conn) -> None:
         skill_columns = ",\n".join([f"{name} INTEGER NOT NULL DEFAULT 0 CHECK({name} >= 0)" for name in CONTRACT_STAT_COLUMNS])
