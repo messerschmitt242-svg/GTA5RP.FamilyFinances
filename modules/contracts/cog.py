@@ -142,7 +142,7 @@ class ContractActionView(discord.ui.View):
         if not can_participate(i.user, self.cog.bot.settings.role_family, self.cog.bot.settings.role_wrestler):
             return await i.response.send_message("❌ Участвовать могут Family или Wrestler", ephemeral=True)
         rp = extract_rp_name(i.user.display_name)
-        self.cog.service.add_participant(self.contract_id, rp, i.user.id, i.user.id, self.cog.bot.settings.max_contract_members)
+        rp = self.cog.service.add_participant(self.contract_id, rp, i.user.id, i.user.id, self.cog.bot.settings.max_contract_members)
         await i.response.send_message(f"✅ Ты записан на контракт `#{self.contract_id}` как **{rp}**. Система пересчитала топ-5.", ephemeral=True)
         await self.cog.refresh_contract_message(i.message, self.contract_id)
 

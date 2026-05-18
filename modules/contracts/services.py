@@ -37,25 +37,59 @@ class ContractService:
             conn.execute("ALTER SEQUENCE IF EXISTS contracts_id_seq RESTART WITH 1")
             conn.execute("ALTER SEQUENCE IF EXISTS contract_history_id_seq RESTART WITH 1")
 
-    def upsert_profile(self, rp_name: str, discord_id: int | str | None, discord_name: str | None, values: dict[str, int]) -> None:
+    def upsert_profile(self, rp_name: str, discord_id: int | str | None, discord_name: str | None, values: dict[str, int]) -> str:
         rp_name = rp_name.strip()
         if not rp_name:
             raise ValueError("RP nickname не может быть пустым")
+
+        discord_id_str = str(discord_id) if discord_id else None
         safe = {k: max(0, int(v)) for k, v in values.items() if k in STAT_KEYS}
-        cols = ["rp_name", "discord_id", "discord_name", *safe.keys()]
-        vals = [rp_name, str(discord_id) if discord_id else None, discord_name, *safe.values()]
-        set_parts = ["updated_at=NOW()"]
-        if discord_id:
-            set_parts.append("discord_id=EXCLUDED.discord_id")
-        if discord_name:
-            set_parts.append("discord_name=EXCLUDED.discord_name")
-        set_parts += [f"{k}=EXCLUDED.{k}" for k in safe.keys()]
-        q = f"""
-            INSERT INTO gta_profiles({', '.join(cols)}) VALUES ({', '.join(['?'] * len(cols))})
-            ON CONFLICT(rp_name) DO UPDATE SET {', '.join(set_parts)}
-        """
+
         with self.db.connect() as conn:
-            conn.execute(q, tuple(vals))
+            # Если человек уже есть по Discord ID, не создаём второй профиль.
+            # Иначе PostgreSQL падает на UNIQUE(gta_profiles.discord_id).
+            if discord_id_str:
+                existing = conn.execute(
+                    "SELECT rp_name FROM gta_profiles WHERE discord_id=?",
+                    (discord_id_str,),
+                ).fetchone()
+                if existing:
+                    existing_rp_name = existing["rp_name"]
+                    set_parts = ["updated_at=NOW()"]
+                    params: list[Any] = []
+
+                    if discord_name:
+                        set_parts.append("discord_name=?")
+                        params.append(discord_name)
+
+                    for key, value in safe.items():
+                        set_parts.append(f"{key}=?")
+                        params.append(value)
+
+                    params.append(existing_rp_name)
+                    conn.execute(
+                        f"UPDATE gta_profiles SET {', '.join(set_parts)} WHERE rp_name=?",
+                        tuple(params),
+                    )
+                    return existing_rp_name
+
+            cols = ["rp_name", "discord_id", "discord_name", *safe.keys()]
+            vals = [rp_name, discord_id_str, discord_name, *safe.values()]
+            set_parts = ["updated_at=NOW()"]
+
+            if discord_id_str:
+                set_parts.append("discord_id=EXCLUDED.discord_id")
+            if discord_name:
+                set_parts.append("discord_name=EXCLUDED.discord_name")
+            set_parts += [f"{k}=EXCLUDED.{k}" for k in safe.keys()]
+
+            q = f"""
+                INSERT INTO gta_profiles({', '.join(cols)}) VALUES ({', '.join(['?'] * len(cols))})
+                ON CONFLICT(rp_name) DO UPDATE SET {', '.join(set_parts)}
+                RETURNING rp_name
+            """
+            row = conn.execute(q, tuple(vals)).fetchone()
+            return row["rp_name"] if row else rp_name
 
     def update_profile_skill(self, rp_name: str, stat_key: str, value: int, actor_id: int | str) -> None:
         if stat_key not in STAT_KEYS:
@@ -141,13 +175,14 @@ class ContractService:
             for _, rp_name, row in rest:
                 conn.execute("INSERT INTO contract_waitlist(contract_id, rp_name, discord_id, added_by) VALUES (?, ?, ?, ?) ON CONFLICT DO NOTHING", (contract_id, rp_name, row.get("discord_id"), row.get("added_by") or row.get("discord_id") or "system"))
 
-    def add_participant(self, contract_id: int, rp_name: str, discord_id: int | None, actor_id: int, max_members: int = 5) -> None:
-        self.upsert_profile(rp_name, discord_id, None, {})
+    def add_participant(self, contract_id: int, rp_name: str, discord_id: int | None, actor_id: int, max_members: int = 5) -> str:
+        profile_rp_name = self.upsert_profile(rp_name, discord_id, None, {})
         with self.db.connect() as conn:
-            conn.execute("DELETE FROM contract_waitlist WHERE contract_id=? AND rp_name=?", (contract_id, rp_name))
-            conn.execute("INSERT INTO contract_participants(contract_id, rp_name, discord_id, added_by) VALUES (?, ?, ?, ?) ON CONFLICT DO NOTHING", (contract_id, rp_name, str(discord_id) if discord_id else None, str(actor_id)))
+            conn.execute("DELETE FROM contract_waitlist WHERE contract_id=? AND rp_name=?", (contract_id, profile_rp_name))
+            conn.execute("INSERT INTO contract_participants(contract_id, rp_name, discord_id, added_by) VALUES (?, ?, ?, ?) ON CONFLICT DO NOTHING", (contract_id, profile_rp_name, str(discord_id) if discord_id else None, str(actor_id)))
         self.rebalance_contract_members(contract_id, max_members)
-        self.log(contract_id, "participant_joined", actor_id, {"rp_name": rp_name})
+        self.log(contract_id, "participant_joined", actor_id, {"rp_name": profile_rp_name})
+        return profile_rp_name
 
     def promote_waitlist(self, contract_id: int, actor_id: int | str, max_members: int = 5) -> int:
         data = self.get_contract(contract_id)
