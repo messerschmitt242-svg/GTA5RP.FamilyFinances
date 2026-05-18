@@ -82,12 +82,31 @@ class AvailableSingleCarView(discord.ui.View):
 
     @discord.ui.button(label="🚘 Забронировать автомобиль", style=discord.ButtonStyle.green)
     async def take(self, i, b):
-        ok = self.cog.service.take(self.car["id"], i.user.id)
-        if not ok:
-            return await i.response.edit_message(content="❌ Автомобиль уже занят", embed=None, view=None)
-        self.cog.service.add_log("ВЗЯТ", self.car["name"], i.user.id)
-        await self.cog.update_terminal()
-        await i.response.edit_message(content="✅ Автомобиль забронирован", embed=None, view=None)
+        await i.response.defer()
+
+        try:
+            ok = self.cog.service.take(self.car["id"], i.user.id)
+            if not ok:
+                return await i.edit_original_response(
+                    content="❌ Автомобиль уже занят",
+                    embed=None,
+                    view=None,
+                )
+
+            self.cog.service.add_log("ВЗЯТ", self.car["name"], i.user.id)
+            await self.cog.update_terminal()
+            await i.edit_original_response(
+                content="✅ Автомобиль забронирован",
+                embed=None,
+                view=None,
+            )
+        except Exception as exc:
+            print(f"CAR TAKE ERROR: {exc}")
+            await i.edit_original_response(
+                content="❌ Ошибка при бронировании автомобиля. Проверьте логи Railway.",
+                embed=None,
+                view=None,
+            )
 
 
 class TakenSingleCarView(discord.ui.View):
@@ -98,10 +117,24 @@ class TakenSingleCarView(discord.ui.View):
 
     @discord.ui.button(label="🔓 Вернуть автомобиль", style=discord.ButtonStyle.red)
     async def return_car_btn(self, i, b):
-        self.cog.service.return_car(self.car["id"])
-        self.cog.service.add_log("ВОЗВРАЩЕН", self.car["name"], i.user.id)
-        await self.cog.update_terminal()
-        await i.response.edit_message(content="✅ Автомобиль возвращен", embed=None, view=None)
+        await i.response.defer()
+
+        try:
+            self.cog.service.return_car(self.car["id"])
+            self.cog.service.add_log("ВОЗВРАЩЕН", self.car["name"], i.user.id)
+            await self.cog.update_terminal()
+            await i.edit_original_response(
+                content="✅ Автомобиль возвращен",
+                embed=None,
+                view=None,
+            )
+        except Exception as exc:
+            print(f"CAR RETURN ERROR: {exc}")
+            await i.edit_original_response(
+                content="❌ Ошибка при возврате автомобиля. Проверьте логи Railway.",
+                embed=None,
+                view=None,
+            )
 
 
 class CarUI(discord.ui.View):
