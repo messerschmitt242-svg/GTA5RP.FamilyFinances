@@ -37,7 +37,7 @@ class ContractService:
             conn.execute("ALTER SEQUENCE IF EXISTS contracts_id_seq RESTART WITH 1")
             conn.execute("ALTER SEQUENCE IF EXISTS contract_history_id_seq RESTART WITH 1")
 
-    def upsert_profile(self, rp_name: str, discord_id: int | str | None, discord_name: str | None, values: dict[str, int]) -> str:
+    def upsert_profile(self, rp_name: str, discord_id: int | str | None, server_tag: str | None, values: dict[str, int]) -> str:
         rp_name = rp_name.strip()
         if not rp_name:
             raise ValueError("RP nickname не может быть пустым")
@@ -58,9 +58,9 @@ class ContractService:
                     set_parts = ["updated_at=NOW()"]
                     params: list[Any] = []
 
-                    if discord_name:
-                        set_parts.append("discord_name=?")
-                        params.append(discord_name)
+                    if server_tag:
+                        set_parts.append("server_tag=?")
+                        params.append(server_tag)
 
                     for key, value in safe.items():
                         set_parts.append(f"{key}=?")
@@ -73,14 +73,14 @@ class ContractService:
                     )
                     return existing_rp_name
 
-            cols = ["rp_name", "discord_id", "discord_name", *safe.keys()]
-            vals = [rp_name, discord_id_str, discord_name, *safe.values()]
+            cols = ["rp_name", "discord_id", "server_tag", *safe.keys()]
+            vals = [rp_name, discord_id_str, server_tag, *safe.values()]
             set_parts = ["updated_at=NOW()"]
 
             if discord_id_str:
                 set_parts.append("discord_id=EXCLUDED.discord_id")
-            if discord_name:
-                set_parts.append("discord_name=EXCLUDED.discord_name")
+            if server_tag:
+                set_parts.append("server_tag=EXCLUDED.server_tag")
             set_parts += [f"{k}=EXCLUDED.{k}" for k in safe.keys()]
 
             q = f"""
@@ -100,7 +100,7 @@ class ContractService:
 
     def list_profiles(self, limit: int = 100):
         with self.db.connect() as conn:
-            return conn.execute("SELECT rp_name, discord_id, discord_name FROM gta_profiles ORDER BY rp_name ASC LIMIT ?", (limit,)).fetchall()
+            return conn.execute("SELECT rp_name, discord_id, server_tag FROM gta_profiles ORDER BY rp_name ASC LIMIT ?", (limit,)).fetchall()
 
     def create_contract(self, title: str, created_by: int | str, requirements: dict[str, int], source: str = "manual", reward_bills: int = 0, reward_dollars: int = 0, duration_minutes: int = 0) -> int:
         req = {k: max(0, int(v)) for k, v in requirements.items() if k in STAT_KEYS and int(v) > 0}

@@ -120,12 +120,37 @@ class Database:
             CREATE TABLE IF NOT EXISTS gta_profiles (
                 rp_name TEXT PRIMARY KEY,
                 discord_id TEXT UNIQUE,
-                discord_name TEXT,
+                server_tag TEXT,
                 {skill_columns},
                 created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
                 updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
             );
         """)
+        conn.execute("""
+            DO $$
+            BEGIN
+                IF EXISTS (
+                    SELECT 1 FROM information_schema.columns
+                    WHERE table_name = 'gta_profiles' AND column_name = 'discord_name'
+                ) AND NOT EXISTS (
+                    SELECT 1 FROM information_schema.columns
+                    WHERE table_name = 'gta_profiles' AND column_name = 'server_tag'
+                ) THEN
+                    ALTER TABLE gta_profiles RENAME COLUMN discord_name TO server_tag;
+                ELSIF EXISTS (
+                    SELECT 1 FROM information_schema.columns
+                    WHERE table_name = 'gta_profiles' AND column_name = 'discord_name'
+                ) AND EXISTS (
+                    SELECT 1 FROM information_schema.columns
+                    WHERE table_name = 'gta_profiles' AND column_name = 'server_tag'
+                ) THEN
+                    UPDATE gta_profiles
+                    SET server_tag = discord_name
+                    WHERE server_tag IS NULL AND discord_name IS NOT NULL;
+                END IF;
+            END $$;
+        """)
+        conn.execute("ALTER TABLE gta_profiles ADD COLUMN IF NOT EXISTS server_tag TEXT")
         for column in CONTRACT_STAT_COLUMNS:
             conn.execute(f"ALTER TABLE gta_profiles ADD COLUMN IF NOT EXISTS {column} INTEGER NOT NULL DEFAULT 0 CHECK({column} >= 0)")
 

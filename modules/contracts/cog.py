@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import re
 from datetime import datetime, timedelta, timezone
 
 import discord
@@ -67,101 +68,46 @@ def parse_pg_datetime(value):
         return None
 
 
+def normalize_server_tag(raw: str) -> str:
+    return re.sub(r"\s+", " ", str(raw or "")).strip()
+
+
+def normalize_member_lookup(raw: str) -> str:
+    return re.sub(r"\s+", "", str(raw or "")).lower()
+
+
+def resolve_member_by_server_tag(guild: discord.Guild | None, raw_tag: str) -> tuple[int | None, str]:
+    server_tag = normalize_server_tag(raw_tag)
+    if not guild or not server_tag:
+        return None, server_tag
+
+    mention_match = re.fullmatch(r"<@!?(\d+)>", server_tag)
+    if mention_match:
+        member = guild.get_member(int(mention_match.group(1)))
+        return (member.id, member.display_name) if member else (int(mention_match.group(1)), server_tag)
+
+    if server_tag.isdigit():
+        member = guild.get_member(int(server_tag))
+        return (member.id, member.display_name) if member else (int(server_tag), server_tag)
+
+    target = normalize_member_lookup(server_tag)
+    for member in guild.members:
+        names = {
+            normalize_member_lookup(member.display_name),
+            normalize_member_lookup(member.name),
+            normalize_member_lookup(str(member)),
+        }
+        if getattr(member, "global_name", None):
+            names.add(normalize_member_lookup(member.global_name))
+        if target in names:
+            return member.id, member.display_name
+
+    return None, server_tag
+
+
 def member_line(row) -> str:
     mention = f"<@{row['discord_id']}>" if row.get("discord_id") else "без тега"
     return f"> 🔸 **{row['rp_name']}** — {mention}"
-
-
-def resolve_discord_member(guild: discord.Guild | None, raw: str) -> discord.Member | None:
-    """Находит участника сервера по упоминанию, ID, username, display_name или name#discriminator."""
-    if not guild:
-        return None
-
-    text = (raw or "").strip()
-    if not text:
-        return None
-
-    cleaned_id = text.replace("<@", "").replace("!", "").replace(">", "").strip()
-    if cleaned_id.isdigit():
-        member = guild.get_member(int(cleaned_id))
-        if member:
-            return member
-
-    needle = text.casefold()
-    for member in guild.members:
-        candidates = {
-            str(member).casefold(),
-            member.name.casefold(),
-            member.display_name.casefold(),
-        }
-        if getattr(member, "global_name", None):
-            candidates.add(member.global_name.casefold())
-        if needle in candidates:
-            return member
-
-    # Мягкий поиск по части ника, если точного совпадения нет.
-    matches = []
-    for member in guild.members:
-        values = [member.name, member.display_name, str(member)]
-        if getattr(member, "global_name", None):
-            values.append(member.global_name)
-        if any(needle in value.casefold() for value in values if value):
-            matches.append(member)
-
-    return matches[0] if len(matches) == 1 else None
-
-
-async def apply_selected_skill_value(
-    cog: "ContractsCog",
-    state: dict,
-    stat_key: str,
-    value: int,
-    i: discord.Interaction,
-):
-    if value < 0:
-        return await i.response.send_message("❌ Значение не может быть меньше 0.", ephemeral=True)
-
-    if state["type"] in {"person", "edit"}:
-        limit = max_value_for(stat_key)
-        if value > limit:
-            return await i.response.send_message(f"❌ Для **{stat_name(stat_key)}** максимум: {limit}.", ephemeral=True)
-
-    state["values"][stat_key] = value
-
-    if state["type"] == "edit":
-        cog.service.update_profile_skill(state["rp_name"], stat_key, value, i.user.id)
-        return await i.response.send_message(
-            f"✅ У **{state['rp_name']}** обновлено: {stat_name(stat_key)} = {value}",
-            ephemeral=True,
-        )
-
-    if len(state["values"]) >= state["count"]:
-        if state["type"] == "contract":
-            text = (
-                "✅ Все требования контракта добавлены.\n\n"
-                f"**{state['title']}**\n"
-                f"{format_requirements(state['values'])}\n\n"
-                "Нажми кнопку ниже, чтобы ввести награду и время выполнения."
-            )
-            return await i.response.send_message(text, view=RewardButtonView(cog, state), ephemeral=True)
-
-        cog.service.upsert_profile(
-            state["rp_name"],
-            state.get("discord_id"),
-            state.get("discord_name"),
-            state["values"],
-        )
-        tag = f"<@{state['discord_id']}>" if state.get("discord_id") else state.get("discord_name", "без тега")
-        await cog.contract_log(
-            f"<@{i.user.id}> добавил человека **{state['rp_name']}** — {tag}\n"
-            f"{format_requirements(state['values'])}"
-        )
-        return await i.response.send_message(
-            f"✅ Человек **{state['rp_name']}** добавлен/обновлен: {tag}.",
-            ephemeral=True,
-        )
-
-    await i.response.send_message(cog.progress_text(state), view=SkillValueView(cog, state), ephemeral=True)
 
 
 class ContractPanel(discord.ui.View):
@@ -301,7 +247,7 @@ class StartContractModal(discord.ui.Modal, title="Добавить контра�
 
 
 class StartPersonModal(discord.ui.Modal, title="Добавить человека"):
-    discord_nick = discord.ui.TextInput(label="Ник в Discord", placeholder="Например: Wolf_Wayne [Саня]", max_length=80)
+    discord_nick = discord.ui.TextInput(label="Серверный тег", placeholder="Например: Wolf_Wayne [Саня]", max_length=80)
     rp_name = discord.ui.TextInput(label="Ник в игре", placeholder="Например: Wolf_Wayne", max_length=80)
     count_input = discord.ui.TextInput(label="Количество прокачанных навыков/рангов/клубов", placeholder="Например: 5", max_length=2)
 
@@ -316,37 +262,16 @@ class StartPersonModal(discord.ui.Modal, title="Добавить человек�
             return await i.response.send_message("❌ Количество должно быть числом.", ephemeral=True)
         if count < 1 or count > 34:
             return await i.response.send_message("❌ Укажи количество от 1 до 34.", ephemeral=True)
-        discord_raw = str(self.discord_nick.value).strip()
-        member = resolve_discord_member(i.guild, discord_raw)
-        cleaned_id = discord_raw.replace("<@", "").replace("!", "").replace(">", "").strip()
-        if not member and i.guild and cleaned_id.isdigit():
-            try:
-                member = await i.guild.fetch_member(int(cleaned_id))
-            except discord.NotFound:
-                member = None
-            except discord.HTTPException:
-                member = None
-
-        if not member:
-            return await i.response.send_message(
-                "❌ Не смог найти пользователя Discord по введённому нику.\n"
-                "Лучше вставь **упоминание пользователя** или его **Discord ID**.",
-                ephemeral=True,
-            )
-
+        discord_id, server_tag = resolve_member_by_server_tag(i.guild, str(self.discord_nick.value))
         state = {
             "type": "person",
-            "discord_name": str(member),
-            "discord_id": str(member.id),
-            "rp_name": str(self.rp_name.value).strip(),
+            "discord_id": discord_id,
+            "server_tag": server_tag,
+            "rp_name": normalize_server_tag(str(self.rp_name.value)),
             "count": count,
             "values": {},
         }
-        await i.response.send_message(
-            f"✅ Discord пользователь найден автоматически: {member.mention}\n\n{self.cog.progress_text(state)}",
-            view=SkillValueView(self.cog, state),
-            ephemeral=True,
-        )
+        await i.response.send_message(self.cog.progress_text(state), view=SkillValueView(self.cog, state), ephemeral=True)
 
 
 class RewardModal(discord.ui.Modal, title="Награда и время"):
@@ -398,30 +323,60 @@ class SkillAmountModal(discord.ui.Modal, title="Количество очков"
             value = int(str(self.amount.value).strip())
         except ValueError:
             return await i.response.send_message("❌ Значение должно быть числом.", ephemeral=True)
-        await apply_selected_skill_value(self.cog, self.state, self.stat_key, value, i)
+        if value < 0:
+            return await i.response.send_message("❌ Значение не может быть меньше 0.", ephemeral=True)
+        await handle_skill_value(i, self.cog, self.state, self.stat_key, value)
 
 
-class SkillValueSelect(discord.ui.Select):
-    def __init__(self, state: dict):
-        stat_key = state.get("stat_key")
-        limit = max_value_for(stat_key) if stat_key else 5
-        label = stat_name(stat_key) if stat_key else "навыка"
-        options = [
-            discord.SelectOption(label=str(value), value=str(value))
-            for value in range(0, limit + 1)
-        ]
-        super().__init__(
-            placeholder=f"3) Выбери уровень для {label} (0-{limit})",
-            min_values=1,
-            max_values=1,
-            options=options,
+async def handle_skill_value(i: discord.Interaction, cog: "ContractsCog", state: dict, stat_key: str, value: int):
+    if state["type"] in {"person", "edit"}:
+        limit = max_value_for(stat_key)
+        if value > limit:
+            return await i.response.send_message(f"❌ Для **{stat_name(stat_key)}** максимум: {limit}.", ephemeral=True)
+
+    state["values"][stat_key] = value
+
+    if state["type"] == "edit":
+        cog.service.update_profile_skill(state["rp_name"], stat_key, value, i.user.id)
+        return await i.response.edit_message(
+            content=f"✅ У **{state['rp_name']}** обновлено: {stat_name(stat_key)} = {value}",
+            view=None,
         )
-        self.state = state
 
-    async def callback(self, i: discord.Interaction):
-        cog = i.client.get_cog("ContractsCog")
-        value = int(self.values[0])
-        await apply_selected_skill_value(cog, self.state, self.state["stat_key"], value, i)
+    if len(state["values"]) >= state["count"]:
+        if state["type"] == "contract":
+            text = (
+                "✅ Все требования контракта добавлены.\n\n"
+                f"**{state['title']}**\n"
+                f"{format_requirements(state['values'])}\n\n"
+                "Нажми кнопку ниже, чтобы ввести награду и время выполнения."
+            )
+            return await i.response.send_message(text, view=RewardButtonView(cog, state), ephemeral=True)
+
+        saved_rp = cog.service.upsert_profile(
+            state["rp_name"],
+            state.get("discord_id"),
+            state.get("server_tag"),
+            state["values"],
+        )
+        mention = f"<@{state['discord_id']}>" if state.get("discord_id") else "Discord ID не найден"
+        await cog.contract_log(
+            f"<@{i.user.id}> добавил человека **{saved_rp}**\n"
+            f"Discord ID: `{state.get('discord_id') or '—'}`\n"
+            f"Серверный тег: `{state.get('server_tag') or '—'}`\n"
+            f"{format_requirements(state['values'])}"
+        )
+        return await i.response.edit_message(
+            content=(
+                f"✅ Человек **{saved_rp}** добавлен/обновлен.\n"
+                f"Discord: {mention}\n"
+                f"Серверный тег: **{state.get('server_tag') or '—'}**"
+            ),
+            view=None,
+        )
+
+    state.pop("stat_key", None)
+    return await i.response.edit_message(content=cog.progress_text(state), view=SkillValueView(cog, state))
 
 
 class CategorySelect(discord.ui.Select):
@@ -446,12 +401,32 @@ class StatSelect(discord.ui.Select):
     async def callback(self, i: discord.Interaction):
         self.state["stat_key"] = self.values[0]
         cog = i.client.get_cog("ContractsCog")
-        if self.state.get("type") == "person":
-            return await i.response.edit_message(
-                content=f"{cog.progress_text(self.state)}\n\nВыбран пункт: **{stat_name(self.values[0])}**. Теперь выбери уровень ниже.",
+        if self.state["type"] in {"person", "edit"}:
+            await i.response.edit_message(
+                content=cog.progress_text(self.state) + f"\n\nВыбрано: **{stat_name(self.values[0])}**. Теперь выбери уровень.",
                 view=SkillValueView(cog, self.state),
             )
+            return
         await i.response.send_modal(SkillAmountModal(cog, self.state, self.values[0]))
+
+
+class LevelSelect(discord.ui.Select):
+    def __init__(self, state: dict):
+        stat_key = state.get("stat_key")
+        limit = max_value_for(stat_key) if stat_key else 5
+        start_value = 0 if state.get("type") == "edit" else 1
+        options = [
+            discord.SelectOption(label=str(v), value=str(v))
+            for v in range(start_value, limit + 1)
+        ]
+        super().__init__(placeholder="3) Выбери уровень", min_values=1, max_values=1, options=options)
+        self.state = state
+
+    async def callback(self, i: discord.Interaction):
+        stat_key = self.state.get("stat_key")
+        if not stat_key:
+            return await i.response.send_message("❌ Сначала выбери навык/ранг/клуб.", ephemeral=True)
+        await handle_skill_value(i, i.client.get_cog("ContractsCog"), self.state, stat_key, int(self.values[0]))
 
 
 class SkillValueView(discord.ui.View):
@@ -459,8 +434,8 @@ class SkillValueView(discord.ui.View):
         super().__init__(timeout=300)
         self.add_item(CategorySelect(state))
         self.add_item(StatSelect(state))
-        if state.get("type") == "person" and state.get("stat_key"):
-            self.add_item(SkillValueSelect(state))
+        if state.get("type") in {"person", "edit"} and state.get("stat_key"):
+            self.add_item(LevelSelect(state))
 
 
 class ProfileSelect(discord.ui.Select):
